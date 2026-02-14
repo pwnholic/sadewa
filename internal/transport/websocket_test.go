@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"sadewa/internal/ws"
 )
 
 func TestNewWSClient(t *testing.T) {
@@ -41,8 +43,7 @@ func TestWSClient_Unsubscribe(t *testing.T) {
 	handler := func(data []byte) error { return nil }
 	_ = client.Subscribe("test-channel", handler)
 
-	err := client.Unsubscribe("test-channel")
-	assert.NoError(t, err)
+	client.Unsubscribe("test-channel")
 
 	subs := client.Subscriptions()
 	assert.Len(t, subs, 0)
@@ -92,9 +93,7 @@ func TestWSClient_IsConnected(t *testing.T) {
 
 	assert.False(t, client.IsConnected())
 
-	client.mu.Lock()
-	client.connected = true
-	client.mu.Unlock()
+	client.state.Store(ws.StateConnected)
 
 	assert.True(t, client.IsConnected())
 }

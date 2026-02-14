@@ -182,11 +182,9 @@ func (c *WSClient) Connect(ctx context.Context) error {
 	c.conn = socket
 	c.mu.Unlock()
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		socket.ReadLoop()
-	}()
+	})
 
 	select {
 	case <-c.connectedChan:
@@ -255,6 +253,39 @@ func (c *WSClient) SubscribeChannel(channel string) (<-chan []byte, <-chan error
 	c.logger.Debug().Str("channel", channel).Msg("subscribed to channel")
 
 	return dataCh, errCh
+}
+
+func (c *WSClient) Subscribe(channel string, handler func([]byte) error) error {
+	dataCh, errCh := c.SubscribeChannel(channel)
+
+	c.wg.Go(func() {
+		for {
+			select {
+			case data, ok := <-dataCh:
+				if !ok {
+					return
+				}
+				if err := handler(data); err != nil {
+					c.logger.Error().Err(err).Str("channel", channel).Msg("handler error")
+				}
+			case err, ok := <-errCh:
+				if !ok {
+					return
+				}
+				if err != nil {
+					c.logger.Error().Err(err).Str("channel", channel).Msg("subscription error")
+				}
+			case <-c.stopChan:
+				return
+			}
+		}
+	})
+
+	return nil
+}
+
+func (c *WSClient) Unsubscribe(channel string) {
+	c.UnsubscribeChannel(channel)
 }
 
 func (c *WSClient) UnsubscribeChannel(channel string) {

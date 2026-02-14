@@ -2,91 +2,124 @@ package aggregator
 
 import (
 	"context"
+	"iter"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
-	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"sadewa/pkg/core"
+	"sadewa/pkg/exchange"
 	"sadewa/pkg/session"
 )
 
-type mockProtocol struct {
+type mockExchange struct {
 	name            string
 	ticker          *core.Ticker
 	orderBook       *core.OrderBook
 	err             error
-	supportedOps    []core.Operation
 	mu              sync.Mutex
 	callCount       int
 	requestedSymbol string
 }
 
-func (m *mockProtocol) Name() string {
+func (m *mockExchange) Name() string {
 	return m.name
 }
 
-func (m *mockProtocol) Version() string {
+func (m *mockExchange) Version() string {
 	return "1.0"
 }
 
-func (m *mockProtocol) BaseURL(sandbox bool) string {
-	return "https://api.mock.com"
-}
-
-func (m *mockProtocol) BuildRequest(ctx context.Context, op core.Operation, params core.Params) (*core.Request, error) {
+func (m *mockExchange) GetTicker(ctx context.Context, symbol string, opts ...exchange.Option) (*core.Ticker, error) {
 	m.mu.Lock()
 	m.callCount++
-	m.requestedSymbol, _ = params["symbol"].(string)
+	m.requestedSymbol = symbol
 	m.mu.Unlock()
 
 	if m.err != nil {
 		return nil, m.err
 	}
-
-	return &core.Request{
-		Method: "GET",
-		Path:   "/api/v3/ticker/24hr",
-		Query:  params,
-	}, nil
+	if m.ticker != nil {
+		return m.ticker, nil
+	}
+	return &core.Ticker{Symbol: symbol}, nil
 }
 
-func (m *mockProtocol) ParseResponse(op core.Operation, resp *resty.Response) (any, error) {
+func (m *mockExchange) GetOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (*core.OrderBook, error) {
+	m.mu.Lock()
+	m.callCount++
+	m.requestedSymbol = symbol
+	m.mu.Unlock()
+
 	if m.err != nil {
 		return nil, m.err
 	}
-
-	switch op {
-	case core.OpGetTicker:
-		if m.ticker != nil {
-			return m.ticker, nil
-		}
-	case core.OpGetOrderBook:
-		if m.orderBook != nil {
-			return m.orderBook, nil
-		}
+	if m.orderBook != nil {
+		return m.orderBook, nil
 	}
-
-	return nil, nil
+	return &core.OrderBook{Symbol: symbol}, nil
 }
 
-func (m *mockProtocol) SignRequest(req *resty.Request, creds core.Credentials) error {
-	return nil
-}
-
-func (m *mockProtocol) SupportedOperations() []core.Operation {
-	if m.supportedOps != nil {
-		return m.supportedOps
+func (m *mockExchange) GetTrades(ctx context.Context, symbol string, opts ...exchange.Option) iter.Seq2[*core.Trade, error] {
+	return func(yield func(*core.Trade, error) bool) {
+		if m.err != nil {
+			yield(nil, m.err)
+			return
+		}
+		yield(&core.Trade{Symbol: symbol}, nil)
 	}
-	return []core.Operation{core.OpGetTicker, core.OpGetOrderBook}
 }
 
-func (m *mockProtocol) RateLimits() core.RateLimitConfig {
-	return core.RateLimitConfig{RequestsPerSecond: 10}
+func (m *mockExchange) GetKlines(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Kline, error) {
+	return []core.Kline{{Symbol: symbol}}, nil
+}
+
+func (m *mockExchange) GetBalance(ctx context.Context, opts ...exchange.Option) ([]core.Balance, error) {
+	return []core.Balance{}, nil
+}
+
+func (m *mockExchange) PlaceOrder(ctx context.Context, req *exchange.OrderRequest, opts ...exchange.Option) (*core.Order, error) {
+	return &core.Order{Symbol: req.Symbol}, nil
+}
+
+func (m *mockExchange) CancelOrder(ctx context.Context, req *exchange.CancelRequest, opts ...exchange.Option) (*core.Order, error) {
+	return &core.Order{Symbol: req.Symbol}, nil
+}
+
+func (m *mockExchange) GetOrder(ctx context.Context, req *exchange.OrderQuery, opts ...exchange.Option) (*core.Order, error) {
+	return &core.Order{Symbol: req.Symbol}, nil
+}
+
+func (m *mockExchange) GetOpenOrders(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Order, error) {
+	return []core.Order{}, nil
+}
+
+func (m *mockExchange) SubscribeTicker(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Ticker, <-chan error) {
+	tickerCh := make(chan *core.Ticker)
+	errCh := make(chan error)
+	close(tickerCh)
+	close(errCh)
+	return tickerCh, errCh
+}
+
+func (m *mockExchange) SubscribeTrades(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Trade, <-chan error) {
+	tradeCh := make(chan *core.Trade)
+	errCh := make(chan error)
+	close(tradeCh)
+	close(errCh)
+	return tradeCh, errCh
+}
+
+func (m *mockExchange) SubscribeOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.OrderBook, <-chan error) {
+	obCh := make(chan *core.OrderBook)
+	errCh := make(chan error)
+	close(obCh)
+	close(errCh)
+	return obCh, errCh
 }
 
 func createTestTicker(bid, ask, volume string, timestamp time.Time) *core.Ticker {
@@ -123,6 +156,15 @@ func createTestOrderBook(bids, asks [][2]string, timestamp time.Time) *core.Orde
 	return ob
 }
 
+func createMockSession(ex exchange.Exchange) *session.Session {
+	config := core.DefaultConfig("test")
+	container := exchange.NewContainer()
+	container.Register(ex.Name(), ex)
+	sess, _ := session.NewSession(container, config)
+	sess.SetExchange(ex.Name())
+	return sess
+}
+
 func TestNewAggregator(t *testing.T) {
 	agg := NewAggregator()
 	assert.NotNil(t, agg)
@@ -133,15 +175,15 @@ func TestNewAggregator(t *testing.T) {
 func TestAggregator_AddRemoveSessions(t *testing.T) {
 	agg := NewAggregator()
 
-	config := core.DefaultConfig("binance")
-	sess, err := session.New(config)
-	require.NoError(t, err)
-	require.NoError(t, sess.SetProtocol(&mockProtocol{name: "binance"}))
+	mockEx := &mockExchange{name: "binance"}
+	sess := createMockSession(mockEx)
 
 	agg.AddSession("binance", sess)
 	assert.Equal(t, []string{"binance"}, agg.Sessions())
 
-	agg.AddSession("coinbase", sess)
+	mockEx2 := &mockExchange{name: "coinbase"}
+	sess2 := createMockSession(mockEx2)
+	agg.AddSession("coinbase", sess2)
 	assert.Len(t, agg.Sessions(), 2)
 
 	agg.RemoveSession("binance")
@@ -489,10 +531,8 @@ func TestGetStats(t *testing.T) {
 	assert.Equal(t, 0, stats.TotalExchanges)
 	assert.Equal(t, 0, stats.ActiveExchanges)
 
-	config := core.DefaultConfig("binance")
-	sess, err := session.New(config)
-	require.NoError(t, err)
-	require.NoError(t, sess.SetProtocol(&mockProtocol{name: "binance"}))
+	mockEx := &mockExchange{name: "binance"}
+	sess := createMockSession(mockEx)
 	agg.AddSession("binance", sess)
 
 	stats = agg.GetStats()

@@ -337,7 +337,7 @@ func (c *BinanceWSClient) handleKlineMessage(data []byte) error {
 	return nil
 }
 
-func (c *BinanceWSClient) subscribeStream(stream string, callback any) error {
+func (c *BinanceWSClient) subscribeStream(stream string, _ any) error {
 	if c.IsConnected() {
 		c.sendSubscribe([]string{stream})
 	}

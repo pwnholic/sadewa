@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"sadewa/pkg/core"
+	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"
 	"sadewa/pkg/session"
 )
@@ -17,14 +18,23 @@ func main() {
 
 	config := core.DefaultConfig("binance")
 
-	sess, err := session.New(config)
+	container := exchange.NewContainer()
+	if err := binance.Register(container, config); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register binance: %v\n", err)
+		os.Exit(1)
+	}
+
+	sess, err := session.NewSession(container, config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
 		os.Exit(1)
 	}
 	defer sess.Close()
 
-	sess.SetProtocol(binance.New())
+	if err := sess.SetExchange("binance"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set exchange: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Println("=== Get Ticker ===")
 	ticker, err := sess.GetTicker(ctx, "BTC/USDT")
@@ -35,7 +45,7 @@ func main() {
 	}
 
 	fmt.Println("\n=== Get Order Book ===")
-	orderBook, err := sess.GetOrderBook(ctx, "BTC/USDT", 5)
+	orderBook, err := sess.GetOrderBook(ctx, "BTC/USDT", exchange.WithLimit(5))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	} else {
@@ -43,15 +53,16 @@ func main() {
 	}
 
 	fmt.Println("\n=== Get Recent Trades ===")
-	trades, err := sess.GetTrades(ctx, "BTC/USDT", 5)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	} else {
-		printTrades(trades)
+	for trade, err := range sess.GetTrades(ctx, "BTC/USDT", exchange.WithLimit(5)) {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			break
+		}
+		printTrade(trade)
 	}
 
 	fmt.Println("\n=== Get Klines ===")
-	klines, err := sess.GetKlines(ctx, "BTC/USDT", "1h", 5)
+	klines, err := sess.GetKlines(ctx, "BTC/USDT", exchange.WithInterval("1h"), exchange.WithLimit(5))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	} else {
@@ -88,16 +99,14 @@ func printOrderBook(ob *core.OrderBook) {
 	}
 }
 
-func printTrades(trades []core.Trade) {
-	for i, t := range trades {
-		side := "BUY "
-		if t.Side == core.SideSell {
-			side = "SELL"
-		}
-		fmt.Printf("  %d. [%s] %s @ %s (Fee: %s %s)\n",
-			i+1, side, t.Quantity.String(), t.Price.String(),
-			t.Fee.String(), t.FeeAsset)
+func printTrade(t *core.Trade) {
+	side := "BUY "
+	if t.Side == core.SideSell {
+		side = "SELL"
 	}
+	fmt.Printf("  [%s] %s @ %s (Fee: %s %s)\n",
+		side, t.Quantity.String(), t.Price.String(),
+		t.Fee.String(), t.FeeAsset)
 }
 
 func printKlines(klines []core.Kline) {

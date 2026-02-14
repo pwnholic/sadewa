@@ -6,11 +6,11 @@ require (
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/apd/v3 v3.2.1
 	github.com/go-playground/validator/v10 v10.23.0
-	resty.dev/v3 v3.0.0-beta.1
 	github.com/lxzan/gws v1.8.9
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/time v0.14.0
+	resty.dev/v3 v3.0.0-beta.1
 )
 
 require (

@@ -6,7 +6,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
+
 	"sadewa/pkg/core"
+	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"
 	"sadewa/pkg/ordermanager"
 	"sadewa/pkg/session"
@@ -33,14 +36,23 @@ func main() {
 		}).
 		WithSandbox(true)
 
-	sess, err := session.New(config)
+	container := exchange.NewContainer()
+	if err := binance.Register(container, config); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register binance: %v\n", err)
+		os.Exit(1)
+	}
+
+	sess, err := session.NewSession(container, config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
 		os.Exit(1)
 	}
 	defer sess.Close()
 
-	sess.SetProtocol(binance.New())
+	if err := sess.SetExchange("binance"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set exchange: %v\n", err)
+		os.Exit(1)
+	}
 
 	manager := ordermanager.NewManager(sess, ordermanager.ManagerConfig{
 		EnableValidation: true,
@@ -68,7 +80,10 @@ func main() {
 
 	if order != nil && order.ID != "" {
 		fmt.Println("\n=== Query Order ===")
-		queriedOrder, err := sess.GetOrder(ctx, order.Symbol, order.ID)
+		queriedOrder, err := sess.GetOrder(ctx, &exchange.OrderQuery{
+			Symbol:  order.Symbol,
+			OrderID: order.ID,
+		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error querying order: %v\n", err)
 		} else {
@@ -150,3 +165,5 @@ func printOrder(o *core.Order) {
 	fmt.Printf("TimeInForce:  %s\n", o.TimeInForce.String())
 	fmt.Printf("Created:      %s\n", o.CreatedAt.Format(time.RFC3339))
 }
+
+var _ = apd.Decimal{}

@@ -10,6 +10,7 @@ import (
 
 	"sadewa/pkg/aggregator"
 	"sadewa/pkg/core"
+	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"
 	"sadewa/pkg/session"
 )
@@ -24,13 +25,24 @@ func main() {
 	agg := aggregator.NewAggregator()
 
 	binanceConfig := core.DefaultConfig("binance")
-	binanceSession, err := session.New(binanceConfig)
+
+	container := exchange.NewContainer()
+	if err := binance.Register(container, binanceConfig); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register binance: %v\n", err)
+		os.Exit(1)
+	}
+
+	binanceSession, err := session.NewSession(container, binanceConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create Binance session: %v\n", err)
 		os.Exit(1)
 	}
 	defer binanceSession.Close()
-	binanceSession.SetProtocol(binance.New())
+
+	if err := binanceSession.SetExchange("binance"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set exchange: %v\n", err)
+		os.Exit(1)
+	}
 
 	agg.AddSession("binance", binanceSession)
 

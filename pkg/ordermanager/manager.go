@@ -11,28 +11,17 @@ import (
 	"github.com/rs/zerolog"
 
 	"sadewa/pkg/core"
+	"sadewa/pkg/exchange"
 	"sadewa/pkg/session"
 )
 
-// OrderCallback is a function type for receiving order status updates.
-// Callbacks are invoked whenever an order's state changes within the manager.
 type OrderCallback func(*core.Order)
 
-// ManagerConfig holds configuration options for the order manager.
 type ManagerConfig struct {
-	// MaxOrders is the maximum number of orders to track in memory.
-	// Defaults to 10000 if not specified or <= 0.
-	MaxOrders int `json:"max_orders"`
-
-	// EnableValidation controls whether orders are validated before submission.
+	MaxOrders        int  `json:"max_orders"`
 	EnableValidation bool `json:"enable_validation"`
 }
 
-// Manager handles order lifecycle management across exchanges.
-// It tracks orders in memory, provides status update callbacks, and
-// coordinates order operations with the underlying session.
-//
-// Manager is safe for concurrent use.
 type Manager struct {
 	session        *session.Session
 	config         ManagerConfig
@@ -43,15 +32,13 @@ type Manager struct {
 	callbacksMu    sync.RWMutex
 }
 
-// NewManager creates a new order manager for the given session.
-// If MaxOrders is not specified or <= 0, it defaults to 10000.
-func NewManager(session *session.Session, config ManagerConfig) *Manager {
+func NewManager(sess *session.Session, config ManagerConfig) *Manager {
 	if config.MaxOrders <= 0 {
 		config.MaxOrders = 10000
 	}
 
 	return &Manager{
-		session:   session,
+		session:   sess,
 		config:    config,
 		logger:    zerolog.Nop(),
 		orders:    sync.Map{},
@@ -59,11 +46,6 @@ func NewManager(session *session.Session, config ManagerConfig) *Manager {
 	}
 }
 
-// PlaceOrder submits a new order to the exchange and tracks it in the manager.
-// The order is validated if EnableValidation is true in the config.
-// Upon success, the order is stored and callbacks are notified.
-//
-// Returns an error if validation fails or the exchange rejects the order.
 func (m *Manager) PlaceOrder(ctx context.Context, order *core.Order) error {
 	if order == nil {
 		return fmt.Errorf("order is required")
@@ -88,43 +70,32 @@ func (m *Manager) PlaceOrder(ctx context.Context, order *core.Order) error {
 	order.RemainingQty.Set(&order.Quantity)
 	order.FilledQuantity = apd.Decimal{}
 
-	params := core.Params{
-		"symbol":   order.Symbol,
-		"side":     order.Side.String(),
-		"type":     order.Type.String(),
-		"quantity": order.Quantity.String(),
+	req := &exchange.OrderRequest{
+		Symbol:        order.Symbol,
+		Side:          order.Side,
+		Type:          order.Type,
+		Price:         order.Price,
+		Quantity:      order.Quantity,
+		TimeInForce:   order.TimeInForce,
+		ClientOrderID: order.ClientOrderID,
 	}
 
-	if !order.Price.IsZero() {
-		params["price"] = order.Price.String()
-	}
-
-	if order.ClientOrderID != "" {
-		params["client_order_id"] = order.ClientOrderID
-	}
-
-	if order.TimeInForce != 0 {
-		params["time_in_force"] = order.TimeInForce.String()
-	}
-
-	result, err := m.session.Do(ctx, core.OpPlaceOrder, params)
+	placedOrder, err := m.session.PlaceOrder(ctx, req)
 	if err != nil {
 		return fmt.Errorf("place order: %w", err)
 	}
 
-	if placedOrder, ok := result.(*core.Order); ok {
-		if placedOrder.ID != "" {
-			order.ID = placedOrder.ID
-		}
-		if placedOrder.Status != core.StatusNew {
-			order.Status = placedOrder.Status
-		}
-		if !placedOrder.FilledQuantity.IsZero() {
-			order.FilledQuantity.Set(&placedOrder.FilledQuantity)
-		}
-		if !placedOrder.RemainingQty.IsZero() {
-			order.RemainingQty.Set(&placedOrder.RemainingQty)
-		}
+	if placedOrder.ID != "" {
+		order.ID = placedOrder.ID
+	}
+	if placedOrder.Status != core.StatusNew {
+		order.Status = placedOrder.Status
+	}
+	if !placedOrder.FilledQuantity.IsZero() {
+		order.FilledQuantity.Set(&placedOrder.FilledQuantity)
+	}
+	if !placedOrder.RemainingQty.IsZero() {
+		order.RemainingQty.Set(&placedOrder.RemainingQty)
 	}
 
 	m.orders.Store(order.ID, order)
@@ -137,8 +108,6 @@ func (m *Manager) PlaceOrder(ctx context.Context, order *core.Order) error {
 	return nil
 }
 
-// CancelOrder requests cancellation of an order by its exchange-assigned ID.
-// Returns an error if the order is not found or is already in a terminal state.
 func (m *Manager) CancelOrder(ctx context.Context, orderID string) error {
 	if orderID == "" {
 		return fmt.Errorf("order ID is required")
@@ -153,12 +122,10 @@ func (m *Manager) CancelOrder(ctx context.Context, orderID string) error {
 		return fmt.Errorf("cannot cancel order in terminal state: %s", order.Status)
 	}
 
-	params := core.Params{
-		"symbol":   order.Symbol,
-		"order_id": orderID,
-	}
-
-	_, err := m.session.Do(ctx, core.OpCancelOrder, params)
+	_, err := m.session.CancelOrder(ctx, &exchange.CancelRequest{
+		Symbol:  order.Symbol,
+		OrderID: orderID,
+	})
 	if err != nil {
 		return fmt.Errorf("cancel order: %w", err)
 	}
@@ -170,8 +137,6 @@ func (m *Manager) CancelOrder(ctx context.Context, orderID string) error {
 	return nil
 }
 
-// GetOrder retrieves an order by its exchange-assigned ID.
-// Returns the order and true if found, nil and false otherwise.
 func (m *Manager) GetOrder(orderID string) (*core.Order, bool) {
 	if orderID == "" {
 		return nil, false
@@ -190,8 +155,6 @@ func (m *Manager) GetOrder(orderID string) (*core.Order, bool) {
 	return order, true
 }
 
-// GetOrderByClientID retrieves an order by its client-assigned order ID.
-// Returns the order and true if found, nil and false otherwise.
 func (m *Manager) GetOrderByClientID(clientOrderID string) (*core.Order, bool) {
 	if clientOrderID == "" {
 		return nil, false
@@ -210,8 +173,6 @@ func (m *Manager) GetOrderByClientID(clientOrderID string) (*core.Order, bool) {
 	return m.GetOrder(orderID)
 }
 
-// UpdateOrderStatus updates the status of a tracked order.
-// Returns an error if the order is not found or the status transition is invalid.
 func (m *Manager) UpdateOrderStatus(orderID string, status core.OrderStatus) error {
 	order, exists := m.GetOrder(orderID)
 	if !exists {
@@ -230,8 +191,6 @@ func (m *Manager) UpdateOrderStatus(orderID string, status core.OrderStatus) err
 	return nil
 }
 
-// SyncOrder fetches the latest order state from the exchange and updates the local copy.
-// Returns the updated order or an error if the sync fails or status transition is invalid.
 func (m *Manager) SyncOrder(ctx context.Context, orderID string) (*core.Order, error) {
 	if orderID == "" {
 		return nil, fmt.Errorf("order ID is required")
@@ -242,19 +201,12 @@ func (m *Manager) SyncOrder(ctx context.Context, orderID string) (*core.Order, e
 		return nil, fmt.Errorf("order not found: %s", orderID)
 	}
 
-	params := core.Params{
-		"symbol":   existingOrder.Symbol,
-		"order_id": orderID,
-	}
-
-	result, err := m.session.Do(ctx, core.OpGetOrder, params)
+	updatedOrder, err := m.session.GetOrder(ctx, &exchange.OrderQuery{
+		Symbol:  existingOrder.Symbol,
+		OrderID: orderID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("sync order: %w", err)
-	}
-
-	updatedOrder, ok := result.(*core.Order)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response type")
 	}
 
 	if !isValidTransition(existingOrder.Status, updatedOrder.Status) {
@@ -275,8 +227,6 @@ func (m *Manager) SyncOrder(ctx context.Context, orderID string) (*core.Order, e
 	return existingOrder, nil
 }
 
-// GetOrders returns all tracked orders matching the given filter.
-// An empty filter matches all orders.
 func (m *Manager) GetOrders(filter OrderFilter) []*core.Order {
 	var result []*core.Order
 
@@ -296,7 +246,6 @@ func (m *Manager) GetOrders(filter OrderFilter) []*core.Order {
 	return result
 }
 
-// GetOpenOrders returns all tracked orders that are not in a terminal state.
 func (m *Manager) GetOpenOrders() []*core.Order {
 	var result []*core.Order
 
@@ -316,8 +265,6 @@ func (m *Manager) GetOpenOrders() []*core.Order {
 	return result
 }
 
-// CancelAllOrders cancels all tracked orders, optionally filtered by symbol.
-// Errors for individual cancellations are logged but do not stop the batch.
 func (m *Manager) CancelAllOrders(ctx context.Context, symbol string) error {
 	var filter OrderFilter
 	if symbol != "" {
@@ -340,8 +287,6 @@ func (m *Manager) CancelAllOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// OnOrderUpdate registers a callback to be invoked on order state changes.
-// Callbacks are called synchronously; avoid blocking operations.
 func (m *Manager) OnOrderUpdate(callback OrderCallback) {
 	m.callbacksMu.Lock()
 	defer m.callbacksMu.Unlock()
@@ -359,8 +304,6 @@ func (m *Manager) notifyCallbacks(order *core.Order) {
 	}
 }
 
-// OrderFilter defines criteria for filtering orders in queries.
-// Empty or zero-value fields are ignored in matching.
 type OrderFilter struct {
 	Symbol string           `json:"symbol,omitempty"`
 	Side   core.OrderSide   `json:"side,omitempty"`
@@ -368,7 +311,6 @@ type OrderFilter struct {
 	Type   core.OrderType   `json:"type,omitempty"`
 }
 
-// Matches returns true if the order matches all non-empty filter criteria.
 func (f *OrderFilter) Matches(order *core.Order) bool {
 	if f.Symbol != "" && order.Symbol != f.Symbol {
 		return false

@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -42,11 +43,19 @@ func NewClient(config *Config) (*Client, error) {
 	client.SetRetryCount(config.MaxRetries)
 	client.SetRetryWaitTime(config.RetryWaitMin)
 	client.SetRetryMaxWaitTime(config.RetryWaitMax)
-
-	client.AddContentTypeEncoder("application/json", func(v interface{}) ([]byte, error) {
-		return sonic.Marshal(v)
+	client.AddContentTypeEncoder("application/json", func(w io.Writer, v any) error {
+		data, err := sonic.Marshal(v)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(data)
+		return err
 	})
-	client.AddContentTypeDecoder("application/json", func(data []byte, v interface{}) error {
+	client.AddContentTypeDecoder("application/json", func(r io.Reader, v any) error {
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
 		return sonic.Unmarshal(data, v)
 	})
 
@@ -75,7 +84,7 @@ func NewClient(config *Config) (*Client, error) {
 			Str("method", resp.Request.Method).
 			Str("url", resp.Request.URL).
 			Int("status", resp.StatusCode()).
-			Int("size", len(resp.Body())).
+			Int("size", len(resp.Bytes())).
 			Msg("http response")
 		return nil
 	})

@@ -7,6 +7,13 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// RateLimitConfig holds rate limiting configuration for an exchange.
+type RateLimitConfig struct {
+	RequestsPerSecond int
+	OrdersPerSecond   int
+	Burst             int
+}
+
 // Credentials holds API authentication credentials for an exchange.
 type Credentials struct {
 	// APIKey is the public API key identifier.

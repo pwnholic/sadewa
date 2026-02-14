@@ -6,13 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/go-resty/resty/v2"
+	"resty.dev/v3"
 
 	"sadewa/pkg/core"
 )
@@ -27,7 +28,7 @@ const (
 type Protocol struct{}
 
 // New creates a new Binance protocol instance.
-func New() *Protocol {
+func NewProtocol() *Protocol {
 	return &Protocol{}
 }
 
@@ -113,7 +114,7 @@ func (p *Protocol) ParseResponse(op core.Operation, resp *resty.Response) (any, 
 
 	if resp.StatusCode() >= 400 {
 		var binanceErr binanceAPIError
-		if err := sonic.Unmarshal(resp.Body(), &binanceErr); err == nil && binanceErr.Code != 0 {
+		if err := sonic.Unmarshal(resp.Bytes(), &binanceErr); err == nil && binanceErr.Code != 0 {
 			return nil, core.NewExchangeErrorWithCode(
 				p.Name(),
 				mapBinanceErrorCode(binanceErr.Code),
@@ -131,7 +132,7 @@ func (p *Protocol) ParseResponse(op core.Operation, resp *resty.Response) (any, 
 	}
 
 	n := NewNormalizer()
-	body := resp.Body()
+	body := resp.Bytes()
 
 	switch op {
 	case core.OpGetTicker:
@@ -201,7 +202,7 @@ func (p *Protocol) SignRequest(req *resty.Request, creds core.Credentials) error
 
 	ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
 
-	queryParams := req.QueryParam
+	queryParams := req.QueryParams
 	if queryParams == nil {
 		queryParams = url.Values{}
 	}
@@ -224,7 +225,7 @@ func (p *Protocol) buildGetTickerRequest(params core.Params) (*core.Request, err
 		return nil, err
 	}
 
-	req := core.NewRequest("GET", "/api/v3/ticker/24hr")
+	req := core.NewRequest(http.MethodGet, "/api/v3/ticker/24hr")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetWeight(2)
 	req.SetCache(fmt.Sprintf("ticker:%s", symbol), 1*time.Second)
@@ -240,7 +241,7 @@ func (p *Protocol) buildGetOrderBookRequest(params core.Params) (*core.Request, 
 
 	limit := getIntParamWithDefault(params, "limit", 100)
 
-	req := core.NewRequest("GET", "/api/v3/depth")
+	req := core.NewRequest(http.MethodGet, "/api/v3/depth")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetQuery("limit", strconv.Itoa(limit))
 	req.SetWeight(2 + limit/50)
@@ -257,7 +258,7 @@ func (p *Protocol) buildGetTradesRequest(params core.Params) (*core.Request, err
 
 	limit := getIntParamWithDefault(params, "limit", 500)
 
-	req := core.NewRequest("GET", "/api/v3/trades")
+	req := core.NewRequest(http.MethodGet, "/api/v3/trades")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetQuery("limit", strconv.Itoa(limit))
 	req.SetWeight(2)
@@ -274,7 +275,7 @@ func (p *Protocol) buildGetKlinesRequest(params core.Params) (*core.Request, err
 	interval := getStringParamWithDefault(params, "interval", "1m")
 	limit := getIntParamWithDefault(params, "limit", 500)
 
-	req := core.NewRequest("GET", "/api/v3/klines")
+	req := core.NewRequest(http.MethodGet, "/api/v3/klines")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetQuery("interval", interval)
 	req.SetQuery("limit", strconv.Itoa(limit))
@@ -284,7 +285,7 @@ func (p *Protocol) buildGetKlinesRequest(params core.Params) (*core.Request, err
 }
 
 func (p *Protocol) buildGetBalanceRequest(_ core.Params) (*core.Request, error) {
-	req := core.NewRequest("GET", "/api/v3/account")
+	req := core.NewRequest(http.MethodGet, "/api/v3/account")
 	req.SetRequireAuth(true)
 	req.SetWeight(10)
 
@@ -312,7 +313,7 @@ func (p *Protocol) buildPlaceOrderRequest(params core.Params) (*core.Request, er
 		return nil, err
 	}
 
-	req := core.NewRequest("POST", "/api/v3/order")
+	req := core.NewRequest(http.MethodPost, "/api/v3/order")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetQuery("side", strings.ToUpper(side))
 	req.SetQuery("type", strings.ToUpper(orderType))
@@ -341,7 +342,7 @@ func (p *Protocol) buildCancelOrderRequest(params core.Params) (*core.Request, e
 		return nil, err
 	}
 
-	req := core.NewRequest("DELETE", "/api/v3/order")
+	req := core.NewRequest(http.MethodDelete, "/api/v3/order")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetRequireAuth(true)
 	req.SetWeight(1)
@@ -363,7 +364,7 @@ func (p *Protocol) buildGetOrderRequest(params core.Params) (*core.Request, erro
 		return nil, err
 	}
 
-	req := core.NewRequest("GET", "/api/v3/order")
+	req := core.NewRequest(http.MethodGet, "/api/v3/order")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetRequireAuth(true)
 	req.SetWeight(2)
@@ -380,7 +381,7 @@ func (p *Protocol) buildGetOrderRequest(params core.Params) (*core.Request, erro
 }
 
 func (p *Protocol) buildGetOpenOrdersRequest(params core.Params) (*core.Request, error) {
-	req := core.NewRequest("GET", "/api/v3/openOrders")
+	req := core.NewRequest(http.MethodGet, "/api/v3/openOrders")
 	req.SetRequireAuth(true)
 	req.SetWeight(3)
 
@@ -397,7 +398,7 @@ func (p *Protocol) buildGetOrderHistoryRequest(params core.Params) (*core.Reques
 		return nil, err
 	}
 
-	req := core.NewRequest("GET", "/api/v3/allOrders")
+	req := core.NewRequest(http.MethodGet, "/api/v3/allOrders")
 	req.SetQuery("symbol", formatSymbol(symbol))
 	req.SetRequireAuth(true)
 	req.SetWeight(10)

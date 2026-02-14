@@ -2,68 +2,140 @@ package session
 
 import (
 	"context"
-	"errors"
+	"iter"
 	"testing"
 	"time"
 
-	"github.com/go-resty/resty/v2"
+	"github.com/cockroachdb/apd/v3"
 	"github.com/stretchr/testify/assert"
 
 	"sadewa/pkg/core"
+	"sadewa/pkg/exchange"
 )
 
 var _ = context.Background
 
-type MockProtocol struct {
-	name              string
-	version           string
-	baseURL           string
-	buildRequestFunc  func(ctx context.Context, op core.Operation, params core.Params) (*core.Request, error)
-	parseResponseFunc func(op core.Operation, resp *resty.Response) (any, error)
-	signRequestFunc   func(req *resty.Request, creds core.Credentials) error
-	supportedOps      []core.Operation
-	rateLimits        core.RateLimitConfig
+type MockExchange struct {
+	name                   string
+	version                string
+	getTickerFunc          func(ctx context.Context, symbol string, opts ...exchange.Option) (*core.Ticker, error)
+	getOrderBookFunc       func(ctx context.Context, symbol string, opts ...exchange.Option) (*core.OrderBook, error)
+	getTradesFunc          func(ctx context.Context, symbol string, opts ...exchange.Option) iter.Seq2[*core.Trade, error]
+	getKlinesFunc          func(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Kline, error)
+	getBalanceFunc         func(ctx context.Context, opts ...exchange.Option) ([]core.Balance, error)
+	placeOrderFunc         func(ctx context.Context, req *exchange.OrderRequest, opts ...exchange.Option) (*core.Order, error)
+	cancelOrderFunc        func(ctx context.Context, req *exchange.CancelRequest, opts ...exchange.Option) (*core.Order, error)
+	getOrderFunc           func(ctx context.Context, req *exchange.OrderQuery, opts ...exchange.Option) (*core.Order, error)
+	getOpenOrdersFunc      func(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Order, error)
+	subscribeTickerFunc    func(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Ticker, <-chan error)
+	subscribeTradesFunc    func(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Trade, <-chan error)
+	subscribeOrderBookFunc func(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.OrderBook, <-chan error)
 }
 
-func (m *MockProtocol) Name() string {
+func (m *MockExchange) Name() string {
 	return m.name
 }
 
-func (m *MockProtocol) Version() string {
+func (m *MockExchange) Version() string {
 	return m.version
 }
 
-func (m *MockProtocol) BaseURL(sandbox bool) string {
-	return m.baseURL
-}
-
-func (m *MockProtocol) BuildRequest(ctx context.Context, op core.Operation, params core.Params) (*core.Request, error) {
-	if m.buildRequestFunc != nil {
-		return m.buildRequestFunc(ctx, op, params)
+func (m *MockExchange) GetTicker(ctx context.Context, symbol string, opts ...exchange.Option) (*core.Ticker, error) {
+	if m.getTickerFunc != nil {
+		return m.getTickerFunc(ctx, symbol, opts...)
 	}
-	return core.NewRequest("GET", "/test"), nil
+	return &core.Ticker{Symbol: symbol}, nil
 }
 
-func (m *MockProtocol) ParseResponse(op core.Operation, resp *resty.Response) (any, error) {
-	if m.parseResponseFunc != nil {
-		return m.parseResponseFunc(op, resp)
+func (m *MockExchange) GetOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (*core.OrderBook, error) {
+	if m.getOrderBookFunc != nil {
+		return m.getOrderBookFunc(ctx, symbol, opts...)
 	}
-	return nil, nil
+	return &core.OrderBook{Symbol: symbol}, nil
 }
 
-func (m *MockProtocol) SignRequest(req *resty.Request, creds core.Credentials) error {
-	if m.signRequestFunc != nil {
-		return m.signRequestFunc(req, creds)
+func (m *MockExchange) GetTrades(ctx context.Context, symbol string, opts ...exchange.Option) iter.Seq2[*core.Trade, error] {
+	if m.getTradesFunc != nil {
+		return m.getTradesFunc(ctx, symbol, opts...)
 	}
-	return nil
+	return func(yield func(*core.Trade, error) bool) {
+		yield(&core.Trade{Symbol: symbol}, nil)
+	}
 }
 
-func (m *MockProtocol) SupportedOperations() []core.Operation {
-	return m.supportedOps
+func (m *MockExchange) GetKlines(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Kline, error) {
+	if m.getKlinesFunc != nil {
+		return m.getKlinesFunc(ctx, symbol, opts...)
+	}
+	return []core.Kline{{Symbol: symbol}}, nil
 }
 
-func (m *MockProtocol) RateLimits() core.RateLimitConfig {
-	return m.rateLimits
+func (m *MockExchange) GetBalance(ctx context.Context, opts ...exchange.Option) ([]core.Balance, error) {
+	if m.getBalanceFunc != nil {
+		return m.getBalanceFunc(ctx, opts...)
+	}
+	return []core.Balance{{Asset: "BTC"}}, nil
+}
+
+func (m *MockExchange) PlaceOrder(ctx context.Context, req *exchange.OrderRequest, opts ...exchange.Option) (*core.Order, error) {
+	if m.placeOrderFunc != nil {
+		return m.placeOrderFunc(ctx, req, opts...)
+	}
+	return &core.Order{Symbol: req.Symbol}, nil
+}
+
+func (m *MockExchange) CancelOrder(ctx context.Context, req *exchange.CancelRequest, opts ...exchange.Option) (*core.Order, error) {
+	if m.cancelOrderFunc != nil {
+		return m.cancelOrderFunc(ctx, req, opts...)
+	}
+	return &core.Order{Symbol: req.Symbol}, nil
+}
+
+func (m *MockExchange) GetOrder(ctx context.Context, req *exchange.OrderQuery, opts ...exchange.Option) (*core.Order, error) {
+	if m.getOrderFunc != nil {
+		return m.getOrderFunc(ctx, req, opts...)
+	}
+	return &core.Order{Symbol: req.Symbol, ID: req.OrderID}, nil
+}
+
+func (m *MockExchange) GetOpenOrders(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Order, error) {
+	if m.getOpenOrdersFunc != nil {
+		return m.getOpenOrdersFunc(ctx, symbol, opts...)
+	}
+	return []core.Order{}, nil
+}
+
+func (m *MockExchange) SubscribeTicker(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Ticker, <-chan error) {
+	if m.subscribeTickerFunc != nil {
+		return m.subscribeTickerFunc(ctx, symbol, opts...)
+	}
+	tickerCh := make(chan *core.Ticker)
+	errCh := make(chan error)
+	close(tickerCh)
+	close(errCh)
+	return tickerCh, errCh
+}
+
+func (m *MockExchange) SubscribeTrades(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Trade, <-chan error) {
+	if m.subscribeTradesFunc != nil {
+		return m.subscribeTradesFunc(ctx, symbol, opts...)
+	}
+	tradeCh := make(chan *core.Trade)
+	errCh := make(chan error)
+	close(tradeCh)
+	close(errCh)
+	return tradeCh, errCh
+}
+
+func (m *MockExchange) SubscribeOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.OrderBook, <-chan error) {
+	if m.subscribeOrderBookFunc != nil {
+		return m.subscribeOrderBookFunc(ctx, symbol, opts...)
+	}
+	obCh := make(chan *core.OrderBook)
+	errCh := make(chan error)
+	close(obCh)
+	close(errCh)
+	return obCh, errCh
 }
 
 func TestNewSession(t *testing.T) {
@@ -105,38 +177,59 @@ func TestNewSession(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.NotNil(t, session)
-			assert.Equal(t, StateNew, session.State())
-			assert.NotNil(t, session.CreatedAt())
-			assert.NotNil(t, session.LastUsed())
+			assert.Equal(t, SessionStateNew, session.State())
 		})
 	}
 }
 
-func TestSession_SetProtocol(t *testing.T) {
+func TestNewSessionWithContainer(t *testing.T) {
+	container := exchange.NewContainer()
 	config := core.DefaultConfig("test")
-	session, err := New(config)
-	assert.NoError(t, err)
 
-	protocol := &MockProtocol{
-		name:    "mock",
-		version: "1.0",
-		baseURL: "https://api.mock.com",
-	}
-
-	err = session.SetProtocol(protocol)
+	session, err := NewSession(container, config)
 	assert.NoError(t, err)
-	assert.Equal(t, StateActive, session.State())
-	assert.Equal(t, protocol, session.Protocol())
+	assert.NotNil(t, session)
+	assert.Equal(t, SessionStateNew, session.State())
 }
 
-func TestSession_SetProtocol_Nil(t *testing.T) {
+func TestNewSessionWithContainer_NilContainer(t *testing.T) {
+	config := core.DefaultConfig("test")
+
+	session, err := NewSession(nil, config)
+	assert.Error(t, err)
+	assert.Nil(t, session)
+}
+
+func TestNewSessionWithContainer_NilConfig(t *testing.T) {
+	container := exchange.NewContainer()
+
+	session, err := NewSession(container, nil)
+	assert.Error(t, err)
+	assert.Nil(t, session)
+}
+
+func TestSession_SetExchange(t *testing.T) {
 	config := core.DefaultConfig("test")
 	session, err := New(config)
 	assert.NoError(t, err)
 
-	err = session.SetProtocol(nil)
+	mockExchange := &MockExchange{name: "mock"}
+	session.RegisterExchange("mock", mockExchange)
+
+	err = session.SetExchange("mock")
+	assert.NoError(t, err)
+	assert.Equal(t, SessionStateActive, session.State())
+	assert.Equal(t, "mock", session.CurrentExchange())
+}
+
+func TestSession_SetExchange_NotFound(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	err = session.SetExchange("nonexistent")
 	assert.Error(t, err)
-	assert.Equal(t, StateNew, session.State())
+	assert.Equal(t, SessionStateNew, session.State())
 }
 
 func TestSession_State(t *testing.T) {
@@ -144,14 +237,15 @@ func TestSession_State(t *testing.T) {
 	session, err := New(config)
 	assert.NoError(t, err)
 
-	assert.Equal(t, StateNew, session.State())
+	assert.Equal(t, SessionStateNew, session.State())
 
-	protocol := &MockProtocol{name: "mock"}
-	session.SetProtocol(protocol)
-	assert.Equal(t, StateActive, session.State())
+	mockExchange := &MockExchange{name: "mock"}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+	assert.Equal(t, SessionStateActive, session.State())
 
 	session.Close()
-	assert.Equal(t, StateClosed, session.State())
+	assert.Equal(t, SessionStateClosed, session.State())
 }
 
 func TestSession_Close(t *testing.T) {
@@ -160,40 +254,215 @@ func TestSession_Close(t *testing.T) {
 	session, err := New(config)
 	assert.NoError(t, err)
 
-	protocol := &MockProtocol{name: "mock"}
-	session.SetProtocol(protocol)
+	mockExchange := &MockExchange{name: "mock"}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
 
 	err = session.Close()
 	assert.NoError(t, err)
-	assert.Equal(t, StateClosed, session.State())
+	assert.Equal(t, SessionStateClosed, session.State())
 }
 
-func TestSession_Do_NoProtocol(t *testing.T) {
+func TestSession_GetTicker_NoExchange(t *testing.T) {
 	config := core.DefaultConfig("test")
 	session, err := New(config)
 	assert.NoError(t, err)
 
-	_, err = session.Do(context.Background(), core.OpGetTicker, nil)
+	_, err = session.GetTicker(context.Background(), "BTC/USDT")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "protocol not set")
+	assert.Contains(t, err.Error(), "exchange not set")
 }
 
-func TestSession_Do_BuildRequestError(t *testing.T) {
+func TestSession_GetTicker(t *testing.T) {
 	config := core.DefaultConfig("test")
 	session, err := New(config)
 	assert.NoError(t, err)
 
-	protocol := &MockProtocol{
+	mockExchange := &MockExchange{
 		name: "mock",
-		buildRequestFunc: func(ctx context.Context, op core.Operation, params core.Params) (*core.Request, error) {
-			return nil, errors.New("build error")
+		getTickerFunc: func(ctx context.Context, symbol string, opts ...exchange.Option) (*core.Ticker, error) {
+			return &core.Ticker{Symbol: symbol}, nil
 		},
 	}
-	session.SetProtocol(protocol)
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
 
-	_, err = session.Do(context.Background(), core.OpGetTicker, nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "build request")
+	ticker, err := session.GetTicker(context.Background(), "BTC/USDT")
+	assert.NoError(t, err)
+	assert.Equal(t, "BTC/USDT", ticker.Symbol)
+}
+
+func TestSession_GetOrderBook(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		getOrderBookFunc: func(ctx context.Context, symbol string, opts ...exchange.Option) (*core.OrderBook, error) {
+			return &core.OrderBook{Symbol: symbol}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	ob, err := session.GetOrderBook(context.Background(), "BTC/USDT")
+	assert.NoError(t, err)
+	assert.Equal(t, "BTC/USDT", ob.Symbol)
+}
+
+func TestSession_GetTrades(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		getTradesFunc: func(ctx context.Context, symbol string, opts ...exchange.Option) iter.Seq2[*core.Trade, error] {
+			return func(yield func(*core.Trade, error) bool) {
+				yield(&core.Trade{Symbol: symbol, ID: "1"}, nil)
+				yield(&core.Trade{Symbol: symbol, ID: "2"}, nil)
+			}
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	var trades []*core.Trade
+	for trade, err := range session.GetTrades(context.Background(), "BTC/USDT") {
+		assert.NoError(t, err)
+		trades = append(trades, trade)
+	}
+	assert.Len(t, trades, 2)
+}
+
+func TestSession_GetKlines(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		getKlinesFunc: func(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Kline, error) {
+			return []core.Kline{{Symbol: symbol}}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	klines, err := session.GetKlines(context.Background(), "BTC/USDT")
+	assert.NoError(t, err)
+	assert.Len(t, klines, 1)
+}
+
+func TestSession_GetBalance(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		getBalanceFunc: func(ctx context.Context, opts ...exchange.Option) ([]core.Balance, error) {
+			return []core.Balance{{Asset: "BTC"}}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	balances, err := session.GetBalance(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, balances, 1)
+}
+
+func TestSession_PlaceOrder(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		placeOrderFunc: func(ctx context.Context, req *exchange.OrderRequest, opts ...exchange.Option) (*core.Order, error) {
+			return &core.Order{Symbol: req.Symbol, ID: "123"}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	var qty apd.Decimal
+	qty.SetInt64(1)
+
+	order, err := session.PlaceOrder(context.Background(), &exchange.OrderRequest{
+		Symbol:   "BTC/USDT",
+		Side:     core.SideBuy,
+		Type:     core.TypeLimit,
+		Quantity: qty,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "BTC/USDT", order.Symbol)
+	assert.Equal(t, "123", order.ID)
+}
+
+func TestSession_CancelOrder(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		cancelOrderFunc: func(ctx context.Context, req *exchange.CancelRequest, opts ...exchange.Option) (*core.Order, error) {
+			return &core.Order{Symbol: req.Symbol, ID: req.OrderID, Status: core.StatusCanceled}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	order, err := session.CancelOrder(context.Background(), &exchange.CancelRequest{
+		Symbol:  "BTC/USDT",
+		OrderID: "123",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, core.StatusCanceled, order.Status)
+}
+
+func TestSession_GetOrder(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		getOrderFunc: func(ctx context.Context, req *exchange.OrderQuery, opts ...exchange.Option) (*core.Order, error) {
+			return &core.Order{Symbol: req.Symbol, ID: req.OrderID}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	order, err := session.GetOrder(context.Background(), &exchange.OrderQuery{
+		Symbol:  "BTC/USDT",
+		OrderID: "123",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "123", order.ID)
+}
+
+func TestSession_GetOpenOrders(t *testing.T) {
+	config := core.DefaultConfig("test")
+	session, err := New(config)
+	assert.NoError(t, err)
+
+	mockExchange := &MockExchange{
+		name: "mock",
+		getOpenOrdersFunc: func(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Order, error) {
+			return []core.Order{{Symbol: symbol, ID: "1"}}, nil
+		},
+	}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	orders, err := session.GetOpenOrders(context.Background(), "BTC/USDT")
+	assert.NoError(t, err)
+	assert.Len(t, orders, 1)
 }
 
 func TestCache_GetSet(t *testing.T) {
@@ -275,20 +544,6 @@ func TestSession_ClearCache(t *testing.T) {
 	assert.Nil(t, val)
 }
 
-func TestSession_SetCredentials(t *testing.T) {
-	config := core.DefaultConfig("test")
-	session, err := New(config)
-	assert.NoError(t, err)
-
-	creds := &core.Credentials{
-		APIKey:    "test-key",
-		SecretKey: "test-secret",
-	}
-
-	session.SetCredentials(creds)
-	assert.Equal(t, creds, session.credentials)
-}
-
 func TestSession_Config(t *testing.T) {
 	config := core.DefaultConfig("test")
 	session, err := New(config)
@@ -298,14 +553,22 @@ func TestSession_Config(t *testing.T) {
 	assert.Equal(t, config, retrievedConfig)
 }
 
-func TestSession_CreatedAt_LastUsed(t *testing.T) {
+func TestSession_CurrentExchange(t *testing.T) {
 	config := core.DefaultConfig("test")
 	session, err := New(config)
 	assert.NoError(t, err)
 
-	createdAt := session.CreatedAt()
-	lastUsed := session.LastUsed()
+	assert.Equal(t, "", session.CurrentExchange())
 
-	assert.False(t, createdAt.IsZero())
-	assert.False(t, lastUsed.IsZero())
+	mockExchange := &MockExchange{name: "mock"}
+	session.RegisterExchange("mock", mockExchange)
+	session.SetExchange("mock")
+
+	assert.Equal(t, "mock", session.CurrentExchange())
+}
+
+func TestSessionState_String(t *testing.T) {
+	assert.Equal(t, "NEW", SessionStateNew.String())
+	assert.Equal(t, "ACTIVE", SessionStateActive.String())
+	assert.Equal(t, "CLOSED", SessionStateClosed.String())
 }
