@@ -201,7 +201,7 @@ sequenceDiagram
 ## Installation
 
 ```bash
-go get github.com/your-org/sadewa
+go get github.com/pwhholic/sadewa
 ```
 
 ### Dependencies
