@@ -64,7 +64,7 @@ A high-performance, type-safe multi-exchange trading library for Go 1.25+. Built
 
 ## Architecture
 
-Sadewa implements a 6-layer architecture designed for modularity and extensibility.
+Sadewa implements a 6-layer architecture with Go 1.25+ features.
 
 ```mermaid
 graph TB
@@ -80,42 +80,47 @@ graph TB
         AR[Arbitrage]
     end
 
-    subgraph "Layer 4: Normalization"
-        N1[binance.Normalizer]
-        N2[coinbase.Normalizer]
-        N3[other.Normalizer]
+    subgraph "Layer 4: Stream"
+        TS[TickerStream]
+        TR[TradeStream]
+        OS[OrderBookStream]
     end
 
-    subgraph "Layer 3: Transport"
-        HTTP[HTTP Client]
-        WS[WebSocket Client]
-    end
-
-    subgraph "Layer 2: Session"
+    subgraph "Layer 3: Session"
         S[Session]
         RL[RateLimiter]
         CB[CircuitBreaker]
         CA[Cache]
     end
 
-    subgraph "Layer 1: Protocol"
-        P1[binance.Protocol]
-        P2[coinbase.Protocol]
-        P3[other.Protocol]
+    subgraph "Layer 2: Exchange Interface"
+        E[Exchange Interface]
+        B[BinanceExchange]
+        C[CoinbaseExchange]
+    end
+
+    subgraph "Layer 1: Internal"
+        HTTP[HTTP Client]
+        WS[WebSocket Client]
+        KR[KeyRing]
+        N[Normalizer]
     end
 
     OM --> S
     AG --> S
-    S --> P1
-    S --> P2
-    S --> P3
-    P1 --> HTTP
-    P1 --> WS
+    S --> E
+    E --> B
+    E --> C
+    B --> HTTP
+    B --> WS
+    B --> KR
+    B --> N
     S --> RL
     S --> CB
     S --> CA
-    HTTP --> N1
-    WS --> N1
+    TS --> WS
+    TR --> WS
+    OS --> WS
 ```
 
 ### Request Flow
@@ -123,39 +128,40 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant OM as OrderManager
     participant S as Session
     participant RL as RateLimiter
     participant CB as CircuitBreaker
-    participant P as Protocol
     participant E as Exchange
+    participant KR as KeyRing
+    participant N as Normalizer
 
-    C->>OM: PlaceOrder(ctx, order)
-    OM->>S: Do(ctx, OpPlaceOrder, params)
+    C->>S: GetTicker(ctx, "BTC/USDT")
 
     alt Cache Hit
-        S-->>OM: Cached Response
+        S-->>C: Cached Ticker
     else Cache Miss
         S->>CB: Allow()
         alt Circuit Open
             CB-->>S: Rejected
-            S-->>OM: Error
+            S-->>C: Error
         else Circuit Closed
             CB-->>S: Allowed
             S->>RL: Wait(ctx)
             RL-->>S: Token Acquired
-            S->>P: BuildRequest(op, params)
-            P-->>S: Request
-            S->>E: HTTP Request
-            E-->>S: Response
-            S->>P: ParseResponse(response)
-            P-->>S: Canonical Type
+            S->>E: GetTicker(ctx, symbol, opts)
+            E->>KR: Current()
+            KR-->>E: APIKey
+            E->>E: BuildRequest()
+            E->>E: HTTP Request
+            E-->>E: Response
+            E->>N: NormalizeTicker(raw)
+            N-->>E: *Ticker
+            E-->>S: *Ticker
             S->>CB: Record(success)
             S->>S: Cache Result
-            S-->>OM: Result
+            S-->>C: *Ticker
         end
     end
-    OM-->>C: Order
 ```
 
 ---
