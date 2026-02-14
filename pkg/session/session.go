@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,18 +17,26 @@ import (
 	"sadewa/pkg/exchange"
 )
 
+// SessionState represents the current lifecycle state of a trading session.
 type SessionState int32
 
+// Session state constants define the lifecycle stages of a session.
 const (
+	// SessionStateNew indicates a newly created session that has not been activated.
 	SessionStateNew SessionState = iota
+	// SessionStateActive indicates a session that is currently operational.
 	SessionStateActive
+	// SessionStateClosed indicates a session that has been shut down.
 	SessionStateClosed
 )
 
+// String returns the string representation of the session state.
 func (s SessionState) String() string {
 	return [...]string{"NEW", "ACTIVE", "CLOSED"}[s]
 }
 
+// Session manages a connection to a single exchange with rate limiting,
+// circuit breaking, and caching capabilities.
 type Session struct {
 	container      *exchange.Container
 	config         *core.Config
@@ -40,17 +49,20 @@ type Session struct {
 	mu             sync.RWMutex
 }
 
+// Cache provides a simple in-memory cache with time-based expiration.
 type Cache struct {
 	mu    sync.RWMutex
 	items map[string]*cacheItem
 	ttl   time.Duration
 }
 
+// cacheItem stores a cached value with its expiration time.
 type cacheItem struct {
 	value     any
 	expiresAt time.Time
 }
 
+// NewCache creates a new cache with the specified default time-to-live duration.
 func NewCache(ttl time.Duration) *Cache {
 	return &Cache{
 		items: make(map[string]*cacheItem),
@@ -58,6 +70,7 @@ func NewCache(ttl time.Duration) *Cache {
 	}
 }
 
+// Get retrieves a value from the cache by key. Returns nil if the key does not exist or has expired.
 func (c *Cache) Get(ctx context.Context, key string) (any, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -74,6 +87,7 @@ func (c *Cache) Get(ctx context.Context, key string) (any, error) {
 	return item.value, nil
 }
 
+// Set stores a value in the cache with the specified key. If ttl is zero, the default TTL is used.
 func (c *Cache) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -89,6 +103,7 @@ func (c *Cache) Set(ctx context.Context, key string, value any, ttl time.Duratio
 	return nil
 }
 
+// Delete removes a single item from the cache by key.
 func (c *Cache) Delete(ctx context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -96,12 +111,15 @@ func (c *Cache) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Clear removes all items from the cache.
 func (c *Cache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items = make(map[string]*cacheItem)
 }
 
+// New creates a new session with the provided configuration.
+// The session is initialized with an empty exchange container and all configured middleware.
 func New(config *core.Config) (*Session, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config is required")
@@ -149,6 +167,8 @@ func New(config *core.Config) (*Session, error) {
 	return session, nil
 }
 
+// NewSession creates a new session with a pre-populated exchange container.
+// Use this when exchanges are registered externally before session creation.
 func NewSession(container *exchange.Container, config *core.Config) (*Session, error) {
 	if container == nil {
 		return nil, fmt.Errorf("container is required")
@@ -199,6 +219,7 @@ func NewSession(container *exchange.Container, config *core.Config) (*Session, e
 	return s, nil
 }
 
+// Close releases all session resources and marks the session as closed.
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -211,10 +232,13 @@ func (s *Session) Close() error {
 	return nil
 }
 
+// State returns the current lifecycle state of the session.
 func (s *Session) State() SessionState {
 	return SessionState(s.state.Load())
 }
 
+// SetExchange activates an exchange by name from the registered container.
+// The session transitions to active state if currently in new state.
 func (s *Session) SetExchange(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -233,12 +257,14 @@ func (s *Session) SetExchange(name string) error {
 	return nil
 }
 
+// RegisterExchange adds an exchange implementation to the session's container.
 func (s *Session) RegisterExchange(name string, ex exchange.Exchange) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.container.Register(name, ex)
 }
 
+// CurrentExchange returns the name of the currently active exchange, or empty string if none is set.
 func (s *Session) CurrentExchange() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -257,6 +283,7 @@ func (s *Session) exchange() (exchange.Exchange, error) {
 	return s.ex, nil
 }
 
+// GetTicker fetches the current ticker for a symbol from the active exchange.
 func (s *Session) GetTicker(ctx context.Context, symbol string, opts ...exchange.Option) (*core.Ticker, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -267,7 +294,7 @@ func (s *Session) GetTicker(ctx context.Context, symbol string, opts ...exchange
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -285,6 +312,7 @@ func (s *Session) GetTicker(ctx context.Context, symbol string, opts ...exchange
 	return ticker, err
 }
 
+// GetOrderBook fetches the current order book for a symbol from the active exchange.
 func (s *Session) GetOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (*core.OrderBook, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -295,7 +323,7 @@ func (s *Session) GetOrderBook(ctx context.Context, symbol string, opts ...excha
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -313,6 +341,7 @@ func (s *Session) GetOrderBook(ctx context.Context, symbol string, opts ...excha
 	return orderBook, err
 }
 
+// GetTrades returns an iterator over recent trades for a symbol from the active exchange.
 func (s *Session) GetTrades(ctx context.Context, symbol string, opts ...exchange.Option) iter.Seq2[*core.Trade, error] {
 	return func(yield func(*core.Trade, error) bool) {
 		ex, err := s.exchange()
@@ -325,7 +354,7 @@ func (s *Session) GetTrades(ctx context.Context, symbol string, opts ...exchange
 			yield(nil, core.NewExchangeError(
 				ex.Name(),
 				core.ErrorTypeServerError,
-				503,
+				http.StatusServiceUnavailable,
 				"circuit breaker is open",
 			))
 			return
@@ -354,6 +383,7 @@ func (s *Session) GetTrades(ctx context.Context, symbol string, opts ...exchange
 	}
 }
 
+// GetKlines fetches historical kline (candlestick) data for a symbol from the active exchange.
 func (s *Session) GetKlines(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Kline, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -364,7 +394,7 @@ func (s *Session) GetKlines(ctx context.Context, symbol string, opts ...exchange
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -382,6 +412,7 @@ func (s *Session) GetKlines(ctx context.Context, symbol string, opts ...exchange
 	return klines, err
 }
 
+// GetBalance fetches the current account balance from the active exchange.
 func (s *Session) GetBalance(ctx context.Context, opts ...exchange.Option) ([]core.Balance, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -392,7 +423,7 @@ func (s *Session) GetBalance(ctx context.Context, opts ...exchange.Option) ([]co
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -410,6 +441,7 @@ func (s *Session) GetBalance(ctx context.Context, opts ...exchange.Option) ([]co
 	return balances, err
 }
 
+// PlaceOrder submits a new order to the active exchange.
 func (s *Session) PlaceOrder(ctx context.Context, req *exchange.OrderRequest, opts ...exchange.Option) (*core.Order, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -420,7 +452,7 @@ func (s *Session) PlaceOrder(ctx context.Context, req *exchange.OrderRequest, op
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -438,6 +470,7 @@ func (s *Session) PlaceOrder(ctx context.Context, req *exchange.OrderRequest, op
 	return order, err
 }
 
+// CancelOrder cancels an existing order on the active exchange.
 func (s *Session) CancelOrder(ctx context.Context, req *exchange.CancelRequest, opts ...exchange.Option) (*core.Order, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -448,7 +481,7 @@ func (s *Session) CancelOrder(ctx context.Context, req *exchange.CancelRequest, 
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -466,6 +499,7 @@ func (s *Session) CancelOrder(ctx context.Context, req *exchange.CancelRequest, 
 	return order, err
 }
 
+// GetOrder fetches the current state of an order from the active exchange.
 func (s *Session) GetOrder(ctx context.Context, req *exchange.OrderQuery, opts ...exchange.Option) (*core.Order, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -476,7 +510,7 @@ func (s *Session) GetOrder(ctx context.Context, req *exchange.OrderQuery, opts .
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -494,6 +528,7 @@ func (s *Session) GetOrder(ctx context.Context, req *exchange.OrderQuery, opts .
 	return order, err
 }
 
+// GetOpenOrders fetches all open orders for a symbol from the active exchange.
 func (s *Session) GetOpenOrders(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Order, error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -504,7 +539,7 @@ func (s *Session) GetOpenOrders(ctx context.Context, symbol string, opts ...exch
 		return nil, core.NewExchangeError(
 			ex.Name(),
 			core.ErrorTypeServerError,
-			503,
+			http.StatusServiceUnavailable,
 			"circuit breaker is open",
 		)
 	}
@@ -522,6 +557,8 @@ func (s *Session) GetOpenOrders(ctx context.Context, symbol string, opts ...exch
 	return orders, err
 }
 
+// SubscribeTicker establishes a real-time ticker subscription for a symbol.
+// Returns channels for ticker updates and errors respectively.
 func (s *Session) SubscribeTicker(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Ticker, <-chan error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -535,6 +572,8 @@ func (s *Session) SubscribeTicker(ctx context.Context, symbol string, opts ...ex
 	return ex.SubscribeTicker(ctx, symbol, opts...)
 }
 
+// SubscribeTrades establishes a real-time trades subscription for a symbol.
+// Returns channels for trade updates and errors respectively.
 func (s *Session) SubscribeTrades(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Trade, <-chan error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -548,6 +587,8 @@ func (s *Session) SubscribeTrades(ctx context.Context, symbol string, opts ...ex
 	return ex.SubscribeTrades(ctx, symbol, opts...)
 }
 
+// SubscribeOrderBook establishes a real-time order book subscription for a symbol.
+// Returns channels for order book updates and errors respectively.
 func (s *Session) SubscribeOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.OrderBook, <-chan error) {
 	ex, err := s.exchange()
 	if err != nil {
@@ -561,12 +602,14 @@ func (s *Session) SubscribeOrderBook(ctx context.Context, symbol string, opts ..
 	return ex.SubscribeOrderBook(ctx, symbol, opts...)
 }
 
+// Config returns the session's configuration.
 func (s *Session) Config() *core.Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.config
 }
 
+// ClearCache removes all cached data from the session.
 func (s *Session) ClearCache() {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

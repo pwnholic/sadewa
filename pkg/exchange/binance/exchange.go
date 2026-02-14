@@ -18,6 +18,8 @@ import (
 	"sadewa/pkg/exchange"
 )
 
+// BinanceExchange implements the Exchange interface for Binance spot and futures markets.
+// It provides rate limiting, circuit breaker, and API key rotation capabilities.
 type BinanceExchange struct {
 	config         *core.Config
 	keyRing        *keyring.KeyRing
@@ -31,25 +33,31 @@ type BinanceExchange struct {
 	wsMu           sync.RWMutex
 }
 
+// Option is a functional option for configuring the BinanceExchange.
 type Option func(*Options)
 
+// Options holds configuration options for the BinanceExchange.
 type Options struct {
 	KeyRing *keyring.KeyRing
 	Logger  zerolog.Logger
 }
 
+// WithKeyRing returns an option that sets the API key ring for key rotation.
 func WithKeyRing(kr *keyring.KeyRing) Option {
 	return func(o *Options) {
 		o.KeyRing = kr
 	}
 }
 
+// WithLogger returns an option that sets the logger for the exchange.
 func WithLogger(l zerolog.Logger) Option {
 	return func(o *Options) {
 		o.Logger = l
 	}
 }
 
+// New creates a new BinanceExchange instance with the given configuration and options.
+// It initializes the HTTP client, rate limiter, and circuit breaker based on the config.
 func New(config *core.Config, opts ...Option) (*BinanceExchange, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
@@ -99,6 +107,7 @@ func New(config *core.Config, opts ...Option) (*BinanceExchange, error) {
 	}, nil
 }
 
+// baseURL returns the API base URL based on market type and sandbox mode.
 func baseURL(config *core.Config) string {
 	switch config.MarketType {
 	case core.MarketTypeFutures:
@@ -114,6 +123,7 @@ func baseURL(config *core.Config) string {
 	}
 }
 
+// wsURL returns the WebSocket URL based on market type and sandbox mode.
 func wsURL(config *core.Config) string {
 	switch config.MarketType {
 	case core.MarketTypeFutures:
@@ -129,14 +139,17 @@ func wsURL(config *core.Config) string {
 	}
 }
 
+// Name returns the exchange identifier "binance".
 func (e *BinanceExchange) Name() string {
 	return "binance"
 }
 
+// Version returns the Binance API version.
 func (e *BinanceExchange) Version() string {
 	return "3"
 }
 
+// Close releases resources used by the exchange, including the HTTP client.
 func (e *BinanceExchange) Close() error {
 	if e.httpClient != nil {
 		return e.httpClient.Close()
@@ -144,6 +157,7 @@ func (e *BinanceExchange) Close() error {
 	return nil
 }
 
+// GetTicker retrieves the current ticker for the specified symbol.
 func (e *BinanceExchange) GetTicker(ctx context.Context, symbol string, opts ...exchange.Option) (*core.Ticker, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -178,6 +192,7 @@ func (e *BinanceExchange) GetTicker(ctx context.Context, symbol string, opts ...
 	return ticker, nil
 }
 
+// GetOrderBook retrieves the order book for the specified symbol.
 func (e *BinanceExchange) GetOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (*core.OrderBook, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -216,6 +231,7 @@ func (e *BinanceExchange) GetOrderBook(ctx context.Context, symbol string, opts 
 	return orderBook, nil
 }
 
+// GetTrades retrieves recent trades for the specified symbol as an iterator.
 func (e *BinanceExchange) GetTrades(ctx context.Context, symbol string, opts ...exchange.Option) iter.Seq2[*core.Trade, error] {
 	return func(yield func(*core.Trade, error) bool) {
 		options := exchange.ApplyOptions(opts...)
@@ -265,6 +281,7 @@ func (e *BinanceExchange) GetTrades(ctx context.Context, symbol string, opts ...
 	}
 }
 
+// GetKlines retrieves candlestick/kline data for the specified symbol.
 func (e *BinanceExchange) GetKlines(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Kline, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -309,6 +326,7 @@ func (e *BinanceExchange) GetKlines(ctx context.Context, symbol string, opts ...
 	return klines, nil
 }
 
+// GetBalance retrieves account balances for all assets.
 func (e *BinanceExchange) GetBalance(ctx context.Context, opts ...exchange.Option) ([]core.Balance, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -339,6 +357,7 @@ func (e *BinanceExchange) GetBalance(ctx context.Context, opts ...exchange.Optio
 	return balances, nil
 }
 
+// PlaceOrder submits a new order to the exchange.
 func (e *BinanceExchange) PlaceOrder(ctx context.Context, req *exchange.OrderRequest, opts ...exchange.Option) (*core.Order, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -386,6 +405,7 @@ func (e *BinanceExchange) PlaceOrder(ctx context.Context, req *exchange.OrderReq
 	return order, nil
 }
 
+// CancelOrder cancels an existing order on the exchange.
 func (e *BinanceExchange) CancelOrder(ctx context.Context, req *exchange.CancelRequest, opts ...exchange.Option) (*core.Order, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -423,6 +443,7 @@ func (e *BinanceExchange) CancelOrder(ctx context.Context, req *exchange.CancelR
 	return order, nil
 }
 
+// GetOrder retrieves the current status of an order.
 func (e *BinanceExchange) GetOrder(ctx context.Context, req *exchange.OrderQuery, opts ...exchange.Option) (*core.Order, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -460,6 +481,7 @@ func (e *BinanceExchange) GetOrder(ctx context.Context, req *exchange.OrderQuery
 	return order, nil
 }
 
+// GetOpenOrders retrieves all open orders for the account, optionally filtered by symbol.
 func (e *BinanceExchange) GetOpenOrders(ctx context.Context, symbol string, opts ...exchange.Option) ([]core.Order, error) {
 	options := exchange.ApplyOptions(opts...)
 
@@ -495,6 +517,8 @@ func (e *BinanceExchange) GetOpenOrders(ctx context.Context, symbol string, opts
 	return orders, nil
 }
 
+// SubscribeTicker subscribes to real-time ticker updates for the specified symbol.
+// Returns channels for ticker updates and errors respectively.
 func (e *BinanceExchange) SubscribeTicker(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Ticker, <-chan error) {
 	tickerCh := make(chan *core.Ticker, 100)
 	errCh := make(chan error, 100)
@@ -527,6 +551,8 @@ func (e *BinanceExchange) SubscribeTicker(ctx context.Context, symbol string, op
 	return tickerCh, errCh
 }
 
+// SubscribeTrades subscribes to real-time trade updates for the specified symbol.
+// Returns channels for trade updates and errors respectively.
 func (e *BinanceExchange) SubscribeTrades(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Trade, <-chan error) {
 	tradeCh := make(chan *core.Trade, 100)
 	errCh := make(chan error, 100)
@@ -559,6 +585,8 @@ func (e *BinanceExchange) SubscribeTrades(ctx context.Context, symbol string, op
 	return tradeCh, errCh
 }
 
+// SubscribeOrderBook subscribes to real-time order book updates for the specified symbol.
+// Returns channels for order book updates and errors respectively.
 func (e *BinanceExchange) SubscribeOrderBook(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.OrderBook, <-chan error) {
 	bookCh := make(chan *core.OrderBook, 100)
 	errCh := make(chan error, 100)
@@ -732,6 +760,8 @@ func (e *BinanceExchange) buildRequestOptions(req *core.Request) []httpClient.Re
 	return opts
 }
 
+// Register creates a BinanceExchange and registers it with the container.
+// This is a convenience function for dependency injection setup.
 func Register(container *exchange.Container, config *core.Config, opts ...Option) error {
 	ex, err := New(config, opts...)
 	if err != nil {

@@ -6,14 +6,20 @@ import (
 	"time"
 )
 
+// State represents the operational state of a circuit breaker.
 type State int32
 
+// Circuit breaker states.
 const (
+	// StateClosed indicates the circuit breaker is allowing all requests through.
 	StateClosed State = iota
+	// StateOpen indicates the circuit breaker is blocking all requests.
 	StateOpen
+	// StateHalfOpen indicates the circuit breaker is testing if the service has recovered.
 	StateHalfOpen
 )
 
+// String returns the string representation of the circuit breaker state.
 func (s State) String() string {
 	switch s {
 	case StateClosed:
@@ -27,12 +33,17 @@ func (s State) String() string {
 	}
 }
 
+// Config holds configuration options for a circuit breaker.
 type Config struct {
-	FailThreshold    int           `json:"fail_threshold"`
-	SuccessThreshold int           `json:"success_threshold"`
-	Timeout          time.Duration `json:"timeout"`
+	// FailThreshold is the number of consecutive failures required to open the circuit.
+	FailThreshold int `json:"fail_threshold"`
+	// SuccessThreshold is the number of consecutive successes required to close the circuit from half-open.
+	SuccessThreshold int `json:"success_threshold"`
+	// Timeout is the duration to wait in open state before transitioning to half-open.
+	Timeout time.Duration `json:"timeout"`
 }
 
+// Breaker implements the circuit breaker pattern for fault tolerance.
 type Breaker struct {
 	state            atomic.Int32
 	failures         atomic.Int32
@@ -45,6 +56,7 @@ type Breaker struct {
 	metrics          *Metrics
 }
 
+// Metrics tracks statistics about circuit breaker operations.
 type Metrics struct {
 	totalRequests   atomic.Int64
 	successRequests atomic.Int64
@@ -52,6 +64,7 @@ type Metrics struct {
 	stateChanges    atomic.Int32
 }
 
+// New creates a new circuit breaker with the given configuration.
 func New(config Config) *Breaker {
 	b := &Breaker{
 		failThreshold:    config.FailThreshold,
@@ -63,6 +76,8 @@ func New(config Config) *Breaker {
 	return b
 }
 
+// Allow returns true if a request should be permitted based on the current circuit state.
+// In open state, it returns false until the timeout has elapsed.
 func (b *Breaker) Allow() bool {
 	b.metrics.totalRequests.Add(1)
 	state := State(b.state.Load())
@@ -83,6 +98,8 @@ func (b *Breaker) Allow() bool {
 	return false
 }
 
+// Record reports the outcome of a request to the circuit breaker.
+// Positive outcomes may close the circuit, while negative outcomes may open it.
 func (b *Breaker) Record(success bool) {
 	state := State(b.state.Load())
 
@@ -142,24 +159,29 @@ func (b *Breaker) transitionTo(newState State) {
 	b.metrics.stateChanges.Add(1)
 }
 
+// State returns the current operational state of the circuit breaker.
 func (b *Breaker) State() State {
 	return State(b.state.Load())
 }
 
+// Reset immediately transitions the circuit breaker to closed state and clears all counters.
 func (b *Breaker) Reset() {
 	b.state.Store(int32(StateClosed))
 	b.failures.Store(0)
 	b.successes.Store(0)
 }
 
+// Failures returns the current count of consecutive failures.
 func (b *Breaker) Failures() int {
 	return int(b.failures.Load())
 }
 
+// Successes returns the current count of consecutive successes in half-open state.
 func (b *Breaker) Successes() int {
 	return int(b.successes.Load())
 }
 
+// Metrics returns a snapshot of the current circuit breaker statistics.
 func (b *Breaker) Metrics() MetricsSnapshot {
 	return MetricsSnapshot{
 		TotalRequests:   b.metrics.totalRequests.Load(),
@@ -170,10 +192,16 @@ func (b *Breaker) Metrics() MetricsSnapshot {
 	}
 }
 
+// MetricsSnapshot is a point-in-time capture of circuit breaker statistics.
 type MetricsSnapshot struct {
-	TotalRequests   int64
+	// TotalRequests is the total number of Allow calls made.
+	TotalRequests int64
+	// SuccessRequests is the number of requests that reported success.
 	SuccessRequests int64
-	FailedRequests  int64
-	StateChanges    int32
-	CurrentState    string
+	// FailedRequests is the number of requests that reported failure.
+	FailedRequests int64
+	// StateChanges is the number of times the circuit breaker has changed state.
+	StateChanges int32
+	// CurrentState is the string representation of the current state.
+	CurrentState string
 }

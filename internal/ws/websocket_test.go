@@ -1,12 +1,10 @@
-package transport
+package ws
 
 import (
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"sadewa/internal/ws"
 )
 
 func TestNewWSClient(t *testing.T) {
@@ -93,7 +91,7 @@ func TestWSClient_IsConnected(t *testing.T) {
 
 	assert.False(t, client.IsConnected())
 
-	client.state.Store(ws.StateConnected)
+	client.state.Store(StateConnected)
 
 	assert.True(t, client.IsConnected())
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cockroachdb/apd/v3"
 
-	"sadewa/pkg/aggregator"
+	"sadewa/pkg/aggregate"
 	"sadewa/pkg/core"
 	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"

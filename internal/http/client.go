@@ -13,6 +13,7 @@ import (
 	"resty.dev/v3"
 )
 
+// Client wraps a resty.Client with additional functionality for HTTP requests.
 type Client struct {
 	client    *resty.Client
 	logger    zerolog.Logger
@@ -21,17 +22,27 @@ type Client struct {
 	closed    bool
 }
 
+// Config holds configuration options for an HTTP client.
 type Config struct {
-	BaseURL      string            `validate:"required,url"`
-	Timeout      time.Duration     `validate:"min=1ms"`
-	MaxRetries   int               `validate:"min=0"`
-	RetryWaitMin time.Duration     `validate:"min=0"`
-	RetryWaitMax time.Duration     `validate:"min=0"`
-	Headers      map[string]string `validate:"omitempty"`
+	// BaseURL is the root URL for all requests made by this client.
+	BaseURL string `validate:"required,url"`
+	// Timeout is the maximum duration for a complete request including retries.
+	Timeout time.Duration `validate:"min=1ms"`
+	// MaxRetries is the maximum number of retry attempts for failed requests.
+	MaxRetries int `validate:"min=0"`
+	// RetryWaitMin is the minimum wait time between retry attempts.
+	RetryWaitMin time.Duration `validate:"min=0"`
+	// RetryWaitMax is the maximum wait time between retry attempts.
+	RetryWaitMax time.Duration `validate:"min=0"`
+	// Headers contains default headers to include in all requests.
+	Headers map[string]string `validate:"omitempty"`
 }
 
+// RequestOption is a function that modifies a resty.Request.
 type RequestOption func(*resty.Request)
 
+// NewClient creates a new HTTP client with the given configuration.
+// It returns an error if the configuration validation fails.
 func NewClient(config *Config) (*Client, error) {
 	if err := validator.New().Struct(config); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
@@ -92,6 +103,7 @@ func NewClient(config *Config) (*Client, error) {
 	return c, nil
 }
 
+// Close releases resources used by the client. It must be called when the client is no longer needed.
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -102,10 +114,12 @@ func (c *Client) Close() error {
 	return c.client.Close()
 }
 
+// Request creates a new request object for custom request building.
 func (c *Client) Request() *resty.Request {
 	return c.client.R()
 }
 
+// Get performs an HTTP GET request to the specified URL with optional request options.
 func (c *Client) Get(ctx context.Context, url string, opts ...RequestOption) (*resty.Response, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -120,6 +134,7 @@ func (c *Client) Get(ctx context.Context, url string, opts ...RequestOption) (*r
 	return req.Get(url)
 }
 
+// Post performs an HTTP POST request to the specified URL with the given body and optional request options.
 func (c *Client) Post(ctx context.Context, url string, body any, opts ...RequestOption) (*resty.Response, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -134,6 +149,7 @@ func (c *Client) Post(ctx context.Context, url string, body any, opts ...Request
 	return req.Post(url)
 }
 
+// Delete performs an HTTP DELETE request to the specified URL with optional request options.
 func (c *Client) Delete(ctx context.Context, url string, opts ...RequestOption) (*resty.Response, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -148,36 +164,42 @@ func (c *Client) Delete(ctx context.Context, url string, opts ...RequestOption) 
 	return req.Delete(url)
 }
 
+// WithHeader returns a RequestOption that sets a single header on the request.
 func WithHeader(key, value string) RequestOption {
 	return func(r *resty.Request) {
 		r.SetHeader(key, value)
 	}
 }
 
+// WithHeaders returns a RequestOption that sets multiple headers on the request.
 func WithHeaders(headers map[string]string) RequestOption {
 	return func(r *resty.Request) {
 		r.SetHeaders(headers)
 	}
 }
 
+// WithQueryParam returns a RequestOption that sets a single query parameter on the request.
 func WithQueryParam(key, value string) RequestOption {
 	return func(r *resty.Request) {
 		r.SetQueryParam(key, value)
 	}
 }
 
+// WithQueryParams returns a RequestOption that sets multiple query parameters on the request.
 func WithQueryParams(params map[string]string) RequestOption {
 	return func(r *resty.Request) {
 		r.SetQueryParams(params)
 	}
 }
 
+// WithResult returns a RequestOption that sets the result object for automatic unmarshaling.
 func WithResult(res any) RequestOption {
 	return func(r *resty.Request) {
 		r.SetResult(res)
 	}
 }
 
+// WithError returns a RequestOption that sets the error object for automatic unmarshaling of error responses.
 func WithError(err any) RequestOption {
 	return func(r *resty.Request) {
 		r.SetError(err)

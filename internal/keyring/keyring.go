@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// KeyRing manages a collection of API keys with rotation support.
 type KeyRing struct {
 	mu       sync.RWMutex
 	keys     []*APIKey
@@ -16,24 +17,39 @@ type KeyRing struct {
 	logger   zerolog.Logger
 }
 
+// APIKey represents credentials for authenticating with an exchange API.
 type APIKey struct {
-	ID         string
-	Key        string
-	Secret     string
+	// ID is a unique identifier for this key.
+	ID string
+	// Key is the public API key identifier.
+	Key string
+	// Secret is the private API key secret.
+	Secret string
+	// Passphrase is an optional passphrase required by some exchanges.
 	Passphrase string
-	Disabled   bool
-	LastUsed   time.Time
+	// Disabled indicates whether this key is currently disabled.
+	Disabled bool
+	// LastUsed records when this key was most recently used.
+	LastUsed time.Time
+	// ErrorCount tracks the number of consecutive errors with this key.
 	ErrorCount int
 }
 
+// RotationStrategy defines when API key rotation should occur.
 type RotationStrategy int
 
+// Available rotation strategies for API key management.
 const (
+	// RotationRoundRobin rotates keys sequentially after each use.
 	RotationRoundRobin RotationStrategy = iota
+	// RotationOnError rotates to the next key when an error occurs.
 	RotationOnError
+	// RotationOnRateLimit rotates to the next key when a rate limit error occurs.
 	RotationOnRateLimit
 )
 
+// NewKeyRing creates a new KeyRing with the given keys and rotation strategy.
+// Keys are copied to prevent external modification.
 func NewKeyRing(keys []*APIKey, strategy RotationStrategy) *KeyRing {
 	if len(keys) == 0 {
 		return &KeyRing{
@@ -63,6 +79,8 @@ func NewKeyRing(keys []*APIKey, strategy RotationStrategy) *KeyRing {
 	}
 }
 
+// Current returns the currently active API key, skipping any disabled keys.
+// It returns nil if no enabled keys are available.
 func (k *KeyRing) Current() *APIKey {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
@@ -81,6 +99,7 @@ func (k *KeyRing) Current() *APIKey {
 	return nil
 }
 
+// Rotate advances to the next enabled API key in the ring.
 func (k *KeyRing) Rotate() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -101,6 +120,7 @@ func (k *KeyRing) Rotate() {
 	}
 }
 
+// OnError handles an error by incrementing the error count and rotating if the strategy requires it.
 func (k *KeyRing) OnError(err error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -116,6 +136,7 @@ func (k *KeyRing) OnError(err error) {
 	}
 }
 
+// MarkUsed updates the LastUsed timestamp for the current key to the current time.
 func (k *KeyRing) MarkUsed() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -127,6 +148,7 @@ func (k *KeyRing) MarkUsed() {
 	k.keys[k.current].LastUsed = time.Now()
 }
 
+// Disable marks the key with the given ID as disabled.
 func (k *KeyRing) Disable(id string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -139,6 +161,7 @@ func (k *KeyRing) Disable(id string) {
 	}
 }
 
+// Enable marks the key with the given ID as enabled and resets its error count.
 func (k *KeyRing) Enable(id string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -152,6 +175,7 @@ func (k *KeyRing) Enable(id string) {
 	}
 }
 
+// Add inserts a new API key into the ring if an key with the same ID does not already exist.
 func (k *KeyRing) Add(key *APIKey) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -170,6 +194,7 @@ func (k *KeyRing) Add(key *APIKey) {
 	})
 }
 
+// Remove deletes the key with the given ID from the ring.
 func (k *KeyRing) Remove(id string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -185,6 +210,7 @@ func (k *KeyRing) Remove(id string) {
 	}
 }
 
+// String returns a safe string representation of the API key with the secret masked.
 func (k *APIKey) String() string {
 	return fmt.Sprintf("APIKey{ID:%s, Key:%s}", k.ID, maskKey(k.Key))
 }

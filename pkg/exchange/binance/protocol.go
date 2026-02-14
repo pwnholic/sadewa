@@ -27,7 +27,7 @@ const (
 // It provides request building, response parsing, and authentication for the Binance API.
 type Protocol struct{}
 
-// New creates a new Binance protocol instance.
+// NewProtocol creates a new Binance protocol instance.
 func NewProtocol() *Protocol {
 	return &Protocol{}
 }

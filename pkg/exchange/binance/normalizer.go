@@ -344,7 +344,7 @@ func (n *Normalizer) NormalizeOrders(data []binanceOrder) ([]core.Order, error) 
 	return orders, nil
 }
 
-// OrderParams contains the parameters for placing an order on Binance.
+// OrderParams contains the Binance-specific parameters for placing an order.
 type OrderParams struct {
 	Symbol        string
 	Side          string

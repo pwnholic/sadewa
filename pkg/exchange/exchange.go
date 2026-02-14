@@ -9,6 +9,9 @@ import (
 	"sadewa/pkg/core"
 )
 
+// Exchange defines the unified interface for interacting with cryptocurrency exchanges.
+// All exchange implementations must provide market data retrieval, account management,
+// order execution, and real-time data streaming capabilities.
 type Exchange interface {
 	Name() string
 	Version() string
@@ -30,6 +33,7 @@ type Exchange interface {
 	SubscribeOrderBook(ctx context.Context, symbol string, opts ...Option) (<-chan *core.OrderBook, <-chan error)
 }
 
+// OrderRequest contains the parameters required to place a new order on an exchange.
 type OrderRequest struct {
 	Symbol        string
 	Side          core.OrderSide
@@ -40,11 +44,13 @@ type OrderRequest struct {
 	ClientOrderID string
 }
 
+// CancelRequest contains the parameters required to cancel an existing order.
 type CancelRequest struct {
 	Symbol  string
 	OrderID string
 }
 
+// OrderQuery contains the parameters required to query order status.
 type OrderQuery struct {
 	Symbol  string
 	OrderID string

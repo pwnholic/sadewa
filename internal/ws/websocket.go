@@ -1,4 +1,4 @@
-package transport
+package ws
 
 import (
 	"context"
@@ -9,23 +9,30 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/lxzan/gws"
 	"github.com/rs/zerolog"
-
-	"sadewa/internal/ws"
 )
 
+// WSConfig holds configuration options for a websocket client.
 type WSConfig struct {
-	URL               string
-	ReconnectEnabled  bool
-	ReconnectMaxWait  time.Duration
+	// URL is the websocket server endpoint to connect to.
+	URL string
+	// ReconnectEnabled determines whether automatic reconnection is enabled.
+	ReconnectEnabled bool
+	// ReconnectMaxWait is the maximum duration to wait between reconnection attempts.
+	ReconnectMaxWait time.Duration
+	// ReconnectBaseWait is the initial duration to wait before the first reconnection attempt.
 	ReconnectBaseWait time.Duration
-	PingInterval      time.Duration
-	PongWait          time.Duration
-	BufferSize        int
+	// PingInterval is the duration between ping messages sent to keep the connection alive.
+	PingInterval time.Duration
+	// PongWait is the maximum time to wait for a pong response before considering the connection dead.
+	PongWait time.Duration
+	// BufferSize is the capacity of channel buffers for subscription messages.
+	BufferSize int
 }
 
+// WSClient manages a websocket connection with reconnection and subscription support.
 type WSClient struct {
 	config  WSConfig
-	state   *ws.State
+	state   *State
 	conn    *gws.Conn
 	handler *wsEventHandler
 	logger  zerolog.Logger
@@ -49,6 +56,8 @@ type wsEventHandler struct {
 	client *WSClient
 }
 
+// NewWSClient creates a new websocket client with the given configuration.
+// Default values are applied for any zero-valued configuration fields.
 func NewWSClient(config WSConfig) *WSClient {
 	if config.ReconnectBaseWait == 0 {
 		config.ReconnectBaseWait = 1 * time.Second
@@ -68,23 +77,24 @@ func NewWSClient(config WSConfig) *WSClient {
 
 	client := &WSClient{
 		config:        config,
-		state:         &ws.State{},
+		state:         &State{},
 		subs:          make(map[string]*wsSubscription),
 		connectedChan: make(chan struct{}),
 		stopChan:      make(chan struct{}),
 		logger:        zerolog.Nop(),
 	}
-	client.state.Store(ws.StateDisconnected)
+	client.state.Store(StateDisconnected)
 	client.handler = &wsEventHandler{client: client}
 	return client
 }
 
+// SetLogger configures the logger for the websocket client.
 func (c *WSClient) SetLogger(logger zerolog.Logger) {
 	c.logger = logger
 }
 
 func (h *wsEventHandler) OnOpen(socket *gws.Conn) {
-	h.client.state.Store(ws.StateConnected)
+	h.client.state.Store(StateConnected)
 
 	h.client.mu.Lock()
 	h.client.reconnectAttempts = 0
@@ -103,7 +113,7 @@ func (h *wsEventHandler) OnOpen(socket *gws.Conn) {
 }
 
 func (h *wsEventHandler) OnClose(socket *gws.Conn, err error) {
-	h.client.state.Store(ws.StateDisconnected)
+	h.client.state.Store(StateDisconnected)
 
 	h.client.mu.Lock()
 	h.client.connectedChan = make(chan struct{})
@@ -161,10 +171,12 @@ func (h *wsEventHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 }
 
+// Connect establishes a websocket connection to the configured URL.
+// It returns an error if the connection fails or the client is in an invalid state.
 func (c *WSClient) Connect(ctx context.Context) error {
-	if !c.state.CompareAndSwap(ws.StateDisconnected, ws.StateConnecting) {
+	if !c.state.CompareAndSwap(StateDisconnected, StateConnecting) {
 		current := c.state.Load()
-		if current == ws.StateConnected {
+		if current == StateConnected {
 			return nil
 		}
 		return fmt.Errorf("invalid state for connect: %s", current)
@@ -174,7 +186,7 @@ func (c *WSClient) Connect(ctx context.Context) error {
 		Addr: c.config.URL,
 	})
 	if err != nil {
-		c.state.Store(ws.StateDisconnected)
+		c.state.Store(StateDisconnected)
 		return fmt.Errorf("connect websocket: %w", err)
 	}
 
@@ -191,20 +203,21 @@ func (c *WSClient) Connect(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		_ = socket.NetConn().Close()
-		c.state.Store(ws.StateDisconnected)
+		c.state.Store(StateDisconnected)
 		return ctx.Err()
 	case <-c.stopChan:
 		_ = socket.NetConn().Close()
-		c.state.Store(ws.StateClosed)
+		c.state.Store(StateClosed)
 		return fmt.Errorf("client stopped")
 	}
 }
 
+// Close gracefully shuts down the websocket client and releases all resources.
 func (c *WSClient) Close() error {
-	if !c.state.CompareAndSwap(ws.StateConnected, ws.StateClosed) &&
-		!c.state.CompareAndSwap(ws.StateConnecting, ws.StateClosed) &&
-		!c.state.CompareAndSwap(ws.StateReconnecting, ws.StateClosed) &&
-		!c.state.CompareAndSwap(ws.StateDisconnected, ws.StateClosed) {
+	if !c.state.CompareAndSwap(StateConnected, StateClosed) &&
+		!c.state.CompareAndSwap(StateConnecting, StateClosed) &&
+		!c.state.CompareAndSwap(StateReconnecting, StateClosed) &&
+		!c.state.CompareAndSwap(StateDisconnected, StateClosed) {
 		return nil
 	}
 
@@ -226,14 +239,19 @@ func (c *WSClient) Close() error {
 	return nil
 }
 
-func (c *WSClient) State() ws.ConnState {
+// State returns the current connection state of the websocket.
+func (c *WSClient) State() ConnState {
 	return c.state.Load()
 }
 
+// IsConnected returns true if the websocket has an active connection.
 func (c *WSClient) IsConnected() bool {
-	return c.state.Load() == ws.StateConnected
+	return c.state.Load() == StateConnected
 }
 
+// SubscribeChannel registers a subscription for the given channel and returns
+// separate channels for receiving data and errors. Messages are delivered
+// to the data channel, while subscription errors are sent to the error channel.
 func (c *WSClient) SubscribeChannel(channel string) (<-chan []byte, <-chan error) {
 	dataCh := make(chan []byte, c.config.BufferSize)
 	errCh := make(chan error, 1)
@@ -255,6 +273,8 @@ func (c *WSClient) SubscribeChannel(channel string) (<-chan []byte, <-chan error
 	return dataCh, errCh
 }
 
+// Subscribe registers a handler function for messages on the given channel.
+// The handler is called in a separate goroutine for each received message.
 func (c *WSClient) Subscribe(channel string, handler func([]byte) error) error {
 	dataCh, errCh := c.SubscribeChannel(channel)
 
@@ -284,10 +304,13 @@ func (c *WSClient) Subscribe(channel string, handler func([]byte) error) error {
 	return nil
 }
 
+// Unsubscribe removes the subscription for the given channel.
+// It is an alias for UnsubscribeChannel.
 func (c *WSClient) Unsubscribe(channel string) {
 	c.UnsubscribeChannel(channel)
 }
 
+// UnsubscribeChannel removes the subscription for the given channel and closes its channels.
 func (c *WSClient) UnsubscribeChannel(channel string) {
 	c.mu.Lock()
 	if sub, ok := c.subs[channel]; ok {
@@ -301,6 +324,7 @@ func (c *WSClient) UnsubscribeChannel(channel string) {
 	c.logger.Debug().Str("channel", channel).Msg("unsubscribed from channel")
 }
 
+// Subscriptions returns a list of all active subscription channel names.
 func (c *WSClient) Subscriptions() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -312,17 +336,21 @@ func (c *WSClient) Subscriptions() []string {
 	return subs
 }
 
+// WriteMessage sends raw bytes over the websocket connection.
+// It returns an error if the connection is not active.
 func (c *WSClient) WriteMessage(data []byte) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.conn == nil || c.state.Load() != ws.StateConnected {
+	if c.conn == nil || c.state.Load() != StateConnected {
 		return fmt.Errorf("websocket not connected")
 	}
 
 	return c.conn.WriteMessage(gws.OpcodeText, data)
 }
 
+// SendJSON marshals the given value to JSON and sends it over the websocket.
+// It returns an error if marshaling fails or the connection is not active.
 func (c *WSClient) SendJSON(v any) error {
 	data, err := sonic.Marshal(v)
 	if err != nil {
@@ -331,11 +359,13 @@ func (c *WSClient) SendJSON(v any) error {
 	return c.WriteMessage(data)
 }
 
+// SendPing sends a ping frame to the server to keep the connection alive.
+// It returns an error if the connection is not active.
 func (c *WSClient) SendPing() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.conn == nil || c.state.Load() != ws.StateConnected {
+	if c.conn == nil || c.state.Load() != StateConnected {
 		return fmt.Errorf("websocket not connected")
 	}
 
@@ -343,7 +373,7 @@ func (c *WSClient) SendPing() error {
 }
 
 func (c *WSClient) attemptReconnect() {
-	if !c.state.CompareAndSwap(ws.StateDisconnected, ws.StateReconnecting) {
+	if !c.state.CompareAndSwap(StateDisconnected, StateReconnecting) {
 		return
 	}
 
@@ -377,7 +407,7 @@ func (c *WSClient) attemptReconnect() {
 				Int("attempt", attempts+1).
 				Msg("reconnect failed")
 			cancel()
-			c.state.Store(ws.StateReconnecting)
+			c.state.Store(StateReconnecting)
 			continue
 		}
 		cancel()
@@ -392,14 +422,21 @@ func (c *WSClient) calculateBackoff(attempts int) time.Duration {
 	return wait
 }
 
+// ReconnectConfig holds configuration for automatic reconnection behavior.
 type ReconnectConfig struct {
-	Enabled     bool
+	// Enabled determines whether automatic reconnection is active.
+	Enabled bool
+	// MaxAttempts is the maximum number of reconnection attempts before giving up.
 	MaxAttempts int
-	BaseWait    time.Duration
-	MaxWait     time.Duration
-	Multiplier  float64
+	// BaseWait is the initial wait duration before the first reconnection attempt.
+	BaseWait time.Duration
+	// MaxWait is the maximum wait duration between reconnection attempts.
+	MaxWait time.Duration
+	// Multiplier is the factor by which the wait duration increases after each attempt.
+	Multiplier float64
 }
 
+// DefaultReconnectConfig returns a ReconnectConfig with sensible default values.
 func DefaultReconnectConfig() ReconnectConfig {
 	return ReconnectConfig{
 		Enabled:     true,

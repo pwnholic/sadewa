@@ -16,6 +16,7 @@ import (
 	"sadewa/pkg/session"
 )
 
+// Aggregator combines market data from multiple exchange sessions.
 type Aggregator struct {
 	mu         sync.RWMutex
 	sessions   map[string]*session.Session
@@ -23,6 +24,7 @@ type Aggregator struct {
 	lastUpdate time.Time
 }
 
+// NewAggregator creates a new aggregator with no sessions registered.
 func NewAggregator() *Aggregator {
 	return &Aggregator{
 		sessions: make(map[string]*session.Session),
@@ -30,6 +32,7 @@ func NewAggregator() *Aggregator {
 	}
 }
 
+// NewAggregatorWithLogger creates a new aggregator with a custom logger.
 func NewAggregatorWithLogger(logger zerolog.Logger) *Aggregator {
 	return &Aggregator{
 		sessions: make(map[string]*session.Session),
@@ -37,6 +40,7 @@ func NewAggregatorWithLogger(logger zerolog.Logger) *Aggregator {
 	}
 }
 
+// AddSession registers a trading session with the aggregator under the given name.
 func (a *Aggregator) AddSession(name string, sess *session.Session) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -44,6 +48,7 @@ func (a *Aggregator) AddSession(name string, sess *session.Session) {
 	a.lastUpdate = time.Now()
 }
 
+// RemoveSession unregisters a trading session from the aggregator.
 func (a *Aggregator) RemoveSession(name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -51,6 +56,7 @@ func (a *Aggregator) RemoveSession(name string) {
 	a.lastUpdate = time.Now()
 }
 
+// Sessions returns the names of all registered sessions in sorted order.
 func (a *Aggregator) Sessions() []string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -63,12 +69,17 @@ func (a *Aggregator) Sessions() []string {
 	return names
 }
 
+// TickerResult holds the ticker data or error from a single exchange.
 type TickerResult struct {
-	Exchange string       `json:"exchange"`
-	Ticker   *core.Ticker `json:"ticker,omitempty"`
-	Error    error        `json:"error,omitempty"`
+	// Exchange is the name of the exchange that provided this result.
+	Exchange string `json:"exchange"`
+	// Ticker contains the market data, or nil if an error occurred.
+	Ticker *core.Ticker `json:"ticker,omitempty"`
+	// Error contains any error that occurred while fetching the ticker.
+	Error error `json:"error,omitempty"`
 }
 
+// GetTickers fetches tickers for a symbol from all registered exchanges concurrently.
 func (a *Aggregator) GetTickers(ctx context.Context, symbol string) []TickerResult {
 	a.mu.RLock()
 	sessions := make(map[string]*session.Session, len(a.sessions))
@@ -122,17 +133,27 @@ func (a *Aggregator) GetTickers(ctx context.Context, symbol string) []TickerResu
 	return results
 }
 
+// BestPrice represents the best bid and ask prices across all exchanges.
 type BestPrice struct {
-	Symbol        string      `json:"symbol"`
-	Bid           apd.Decimal `json:"bid"`
-	Ask           apd.Decimal `json:"ask"`
-	BidExchange   string      `json:"bid_exchange"`
-	AskExchange   string      `json:"ask_exchange"`
-	Spread        apd.Decimal `json:"spread"`
+	// Symbol is the trading pair symbol.
+	Symbol string `json:"symbol"`
+	// Bid is the highest bid price found across all exchanges.
+	Bid apd.Decimal `json:"bid"`
+	// Ask is the lowest ask price found across all exchanges.
+	Ask apd.Decimal `json:"ask"`
+	// BidExchange is the name of the exchange with the best bid.
+	BidExchange string `json:"bid_exchange"`
+	// AskExchange is the name of the exchange with the best ask.
+	AskExchange string `json:"ask_exchange"`
+	// Spread is the difference between the best ask and best bid.
+	Spread apd.Decimal `json:"spread"`
+	// SpreadPercent is the spread as a percentage of the bid price.
 	SpreadPercent apd.Decimal `json:"spread_percent"`
-	Timestamp     time.Time   `json:"timestamp"`
+	// Timestamp is the most recent update time from any exchange.
+	Timestamp time.Time `json:"timestamp"`
 }
 
+// GetBestPrice finds the highest bid and lowest ask for a symbol across all exchanges.
 func (a *Aggregator) GetBestPrice(ctx context.Context, symbol string) (*BestPrice, error) {
 	tickers := a.GetTickers(ctx, symbol)
 
@@ -210,14 +231,22 @@ func (a *Aggregator) GetBestPrice(ctx context.Context, symbol string) (*BestPric
 	}, nil
 }
 
+// VWAPResult holds the volume-weighted average price calculation results.
 type VWAPResult struct {
-	Symbol    string      `json:"symbol"`
-	VWAP      apd.Decimal `json:"vwap"`
-	Volume    apd.Decimal `json:"volume"`
-	NumTrades int         `json:"num_trades"`
-	Exchanges []string    `json:"exchanges"`
+	// Symbol is the trading pair symbol.
+	Symbol string `json:"symbol"`
+	// VWAP is the calculated volume-weighted average price.
+	VWAP apd.Decimal `json:"vwap"`
+	// Volume is the total volume included in the calculation.
+	Volume apd.Decimal `json:"volume"`
+	// NumTrades is the count of order book levels included.
+	NumTrades int `json:"num_trades"`
+	// Exchanges lists the names of exchanges that contributed data.
+	Exchanges []string `json:"exchanges"`
 }
 
+// GetVWAP calculates the volume-weighted average price across all exchanges.
+// The depth parameter limits the number of order book levels to include per exchange.
 func (a *Aggregator) GetVWAP(ctx context.Context, symbol string, depth int) (*VWAPResult, error) {
 	a.mu.RLock()
 	sessions := make(map[string]*session.Session, len(a.sessions))
@@ -340,14 +369,22 @@ func (a *Aggregator) GetVWAP(ctx context.Context, symbol string, depth int) (*VW
 	}, nil
 }
 
+// MergedOrderBook combines order book levels from multiple exchanges.
 type MergedOrderBook struct {
-	Symbol    string                `json:"symbol"`
-	Bids      []core.OrderBookLevel `json:"bids"`
-	Asks      []core.OrderBookLevel `json:"asks"`
-	Timestamp time.Time             `json:"timestamp"`
-	Exchanges []string              `json:"exchanges"`
+	// Symbol is the trading pair symbol.
+	Symbol string `json:"symbol"`
+	// Bids are aggregated bid levels sorted by price descending.
+	Bids []core.OrderBookLevel `json:"bids"`
+	// Asks are aggregated ask levels sorted by price ascending.
+	Asks []core.OrderBookLevel `json:"asks"`
+	// Timestamp is the most recent update time from any exchange.
+	Timestamp time.Time `json:"timestamp"`
+	// Exchanges lists the names of exchanges that contributed data.
+	Exchanges []string `json:"exchanges"`
 }
 
+// GetMergedOrderBook aggregates order book levels from all exchanges.
+// Levels at the same price are combined by summing their quantities.
 func (a *Aggregator) GetMergedOrderBook(ctx context.Context, symbol string, depth int) (*MergedOrderBook, error) {
 	a.mu.RLock()
 	sessions := make(map[string]*session.Session, len(a.sessions))
@@ -507,18 +544,27 @@ func (a *Aggregator) GetMergedOrderBook(ctx context.Context, symbol string, dept
 	}, nil
 }
 
+// ExchangePrice holds bid and ask prices from a single exchange.
 type ExchangePrice struct {
-	Exchange string      `json:"exchange"`
-	Bid      apd.Decimal `json:"bid"`
-	Ask      apd.Decimal `json:"ask"`
+	// Exchange is the name of the exchange.
+	Exchange string `json:"exchange"`
+	// Bid is the current bid price.
+	Bid apd.Decimal `json:"bid"`
+	// Ask is the current ask price.
+	Ask apd.Decimal `json:"ask"`
 }
 
+// PriceComparison holds price data from multiple exchanges for comparison.
 type PriceComparison struct {
-	Symbol    string          `json:"symbol"`
+	// Symbol is the trading pair symbol.
+	Symbol string `json:"symbol"`
+	// Exchanges contains price data from each exchange.
 	Exchanges []ExchangePrice `json:"exchanges"`
-	MaxSpread apd.Decimal     `json:"max_spread"`
+	// MaxSpread is the largest bid-ask spread across all exchanges.
+	MaxSpread apd.Decimal `json:"max_spread"`
 }
 
+// ComparePrices fetches and compares prices for a symbol across all exchanges.
 func (a *Aggregator) ComparePrices(ctx context.Context, symbol string) (*PriceComparison, error) {
 	tickers := a.GetTickers(ctx, symbol)
 
@@ -559,17 +605,28 @@ func (a *Aggregator) ComparePrices(ctx context.Context, symbol string) (*PriceCo
 	}, nil
 }
 
+// ArbitrageOpportunity represents a potential cross-exchange arbitrage trade.
 type ArbitrageOpportunity struct {
-	Symbol          string      `json:"symbol"`
-	BuyExchange     string      `json:"buy_exchange"`
-	SellExchange    string      `json:"sell_exchange"`
-	BuyPrice        apd.Decimal `json:"buy_price"`
-	SellPrice       apd.Decimal `json:"sell_price"`
-	Spread          apd.Decimal `json:"spread"`
-	SpreadPercent   apd.Decimal `json:"spread_percent"`
+	// Symbol is the trading pair symbol.
+	Symbol string `json:"symbol"`
+	// BuyExchange is the exchange to buy from (lowest ask).
+	BuyExchange string `json:"buy_exchange"`
+	// SellExchange is the exchange to sell to (highest bid).
+	SellExchange string `json:"sell_exchange"`
+	// BuyPrice is the ask price on the buy exchange.
+	BuyPrice apd.Decimal `json:"buy_price"`
+	// SellPrice is the bid price on the sell exchange.
+	SellPrice apd.Decimal `json:"sell_price"`
+	// Spread is the difference between sell and buy prices.
+	Spread apd.Decimal `json:"spread"`
+	// SpreadPercent is the spread as a percentage of the buy price.
+	SpreadPercent apd.Decimal `json:"spread_percent"`
+	// PotentialProfit is the estimated profit per unit traded.
 	PotentialProfit apd.Decimal `json:"potential_profit"`
 }
 
+// FindArbitrage identifies arbitrage opportunities where buying on one exchange
+// and selling on another yields a spread above the minimum threshold.
 func (a *Aggregator) FindArbitrage(ctx context.Context, symbol string, minSpreadPercent apd.Decimal) ([]ArbitrageOpportunity, error) {
 	tickers := a.GetTickers(ctx, symbol)
 
@@ -641,12 +698,17 @@ func (a *Aggregator) FindArbitrage(ctx context.Context, symbol string, minSpread
 	return opportunities, nil
 }
 
+// AggregateStats contains statistics about the aggregator's registered sessions.
 type AggregateStats struct {
-	TotalExchanges  int       `json:"total_exchanges"`
-	ActiveExchanges int       `json:"active_exchanges"`
-	LastUpdate      time.Time `json:"last_update"`
+	// TotalExchanges is the count of all registered sessions.
+	TotalExchanges int `json:"total_exchanges"`
+	// ActiveExchanges is the count of sessions in active state.
+	ActiveExchanges int `json:"active_exchanges"`
+	// LastUpdate is the timestamp of the most recent data refresh.
+	LastUpdate time.Time `json:"last_update"`
 }
 
+// GetStats returns statistics about the aggregator's current state.
 func (a *Aggregator) GetStats() *AggregateStats {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

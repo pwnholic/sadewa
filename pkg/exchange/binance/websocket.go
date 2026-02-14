@@ -13,12 +13,12 @@ import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/rs/zerolog"
 
-	"sadewa/internal/transport"
+	"sadewa/internal/ws"
 	"sadewa/pkg/core"
 )
 
 type BinanceWSClient struct {
-	client    *transport.WSClient
+	client    *ws.WSClient
 	logger    zerolog.Logger
 	requestID atomic.Int64
 
@@ -44,7 +44,7 @@ func NewBinanceWSClient(sandbox bool) *BinanceWSClient {
 	}
 
 	return &BinanceWSClient{
-		client: transport.NewWSClient(transport.WSConfig{
+		client: ws.NewWSClient(ws.WSConfig{
 			URL:               wsURL,
 			ReconnectEnabled:  true,
 			ReconnectMaxWait:  30 * time.Second,

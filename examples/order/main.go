@@ -11,7 +11,7 @@ import (
 	"sadewa/pkg/core"
 	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"
-	"sadewa/pkg/ordermanager"
+	"sadewa/pkg/order"
 	"sadewa/pkg/session"
 )
 
