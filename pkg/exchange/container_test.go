@@ -54,6 +54,10 @@ func (m *mockExchange) SubscribeTrades(ctx context.Context, s string, opts ...Op
 func (m *mockExchange) SubscribeOrderBook(ctx context.Context, s string, opts ...Option) (<-chan *core.OrderBook, <-chan error) {
 	return nil, nil
 }
+func (m *mockExchange) SubscribeKlines(ctx context.Context, s string, opts ...Option) (<-chan *core.Kline, <-chan error) {
+	return nil, nil
+}
+func (m *mockExchange) Close() error { return nil }
 
 func TestContainer_NewContainer(t *testing.T) {
 	c := NewContainer()

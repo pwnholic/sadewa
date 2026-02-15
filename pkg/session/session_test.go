@@ -138,6 +138,18 @@ func (m *MockExchange) SubscribeOrderBook(ctx context.Context, symbol string, op
 	return obCh, errCh
 }
 
+func (m *MockExchange) SubscribeKlines(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Kline, <-chan error) {
+	klineCh := make(chan *core.Kline)
+	errCh := make(chan error)
+	close(klineCh)
+	close(errCh)
+	return klineCh, errCh
+}
+
+func (m *MockExchange) Close() error {
+	return nil
+}
+
 func TestNewSession(t *testing.T) {
 	tests := []struct {
 		name    string

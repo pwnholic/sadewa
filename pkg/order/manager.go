@@ -16,7 +16,14 @@ import (
 )
 
 // OrderCallback is a function that receives order updates when orders change state.
+// Deprecated: Use SubscribeOrders for channel-based updates instead.
 type OrderCallback func(*core.Order)
+
+// orderSubscriber holds a subscriber's channel for order updates.
+type orderSubscriber struct {
+	orderCh chan *core.Order
+	errCh   chan error
+}
 
 // ManagerConfig holds configuration options for the order manager.
 type ManagerConfig struct {
@@ -36,6 +43,8 @@ type Manager struct {
 	clientOrderIDs sync.Map
 	callbacks      []OrderCallback
 	callbacksMu    sync.RWMutex
+	subscribers    []orderSubscriber
+	subscribersMu  sync.RWMutex
 }
 
 // NewManager creates a new order manager for the given session.
@@ -306,13 +315,55 @@ func (m *Manager) CancelAllOrders(ctx context.Context, symbol string) error {
 }
 
 // OnOrderUpdate registers a callback to be invoked when any tracked order changes.
+// Deprecated: Use SubscribeOrders for channel-based updates instead.
 func (m *Manager) OnOrderUpdate(callback OrderCallback) {
 	m.callbacksMu.Lock()
 	defer m.callbacksMu.Unlock()
 	m.callbacks = append(m.callbacks, callback)
 }
 
+// SubscribeOrders returns channels for receiving order updates.
+// The order channel receives order updates, and the error channel receives any errors.
+// Channels are closed when the context is cancelled.
+func (m *Manager) SubscribeOrders(ctx context.Context) (<-chan *core.Order, <-chan error) {
+	orderCh := make(chan *core.Order, 100)
+	errCh := make(chan error, 1)
+
+	sub := orderSubscriber{
+		orderCh: orderCh,
+		errCh:   errCh,
+	}
+
+	m.subscribersMu.Lock()
+	m.subscribers = append(m.subscribers, sub)
+	m.subscribersMu.Unlock()
+
+	// Spawn goroutine to handle context cancellation
+	go func() {
+		<-ctx.Done()
+		m.removeSubscriber(sub)
+	}()
+
+	return orderCh, errCh
+}
+
+// removeSubscriber removes a subscriber and closes its channels.
+func (m *Manager) removeSubscriber(sub orderSubscriber) {
+	m.subscribersMu.Lock()
+	defer m.subscribersMu.Unlock()
+
+	for i, s := range m.subscribers {
+		if s.orderCh == sub.orderCh {
+			m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)
+			close(sub.orderCh)
+			close(sub.errCh)
+			return
+		}
+	}
+}
+
 func (m *Manager) notifyCallbacks(order *core.Order) {
+	// Notify legacy callbacks
 	m.callbacksMu.RLock()
 	callbacks := make([]OrderCallback, len(m.callbacks))
 	copy(callbacks, m.callbacks)
@@ -320,6 +371,20 @@ func (m *Manager) notifyCallbacks(order *core.Order) {
 
 	for _, callback := range callbacks {
 		callback(order)
+	}
+
+	// Notify channel subscribers
+	m.subscribersMu.RLock()
+	subscribers := make([]orderSubscriber, len(m.subscribers))
+	copy(subscribers, m.subscribers)
+	m.subscribersMu.RUnlock()
+
+	for _, sub := range subscribers {
+		select {
+		case sub.orderCh <- order:
+		default:
+			m.logger.Warn().Str("order_id", order.ID).Msg("order subscriber channel full, message dropped")
+		}
 	}
 }
 

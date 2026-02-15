@@ -1,7 +1,6 @@
 package core
 
 import (
-	"errors"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -105,17 +104,24 @@ var validate = validator.New()
 // Returns an error if any field fails validation, particularly for circuit breaker settings.
 func (c *Config) Validate() error {
 	if err := validate.Struct(c); err != nil {
-		return err
+		return NewExchangeError("", ErrorTypeBadRequest, 400, err.Error()).
+			WithCode(ErrCodeInvalidConfig)
 	}
 	if c.CircuitBreakerEnabled {
 		if c.CircuitBreakerFailThreshold <= 0 {
-			return errors.New("CircuitBreakerFailThreshold must be positive when enabled")
+			return NewExchangeError("", ErrorTypeBadRequest, 400,
+				"CircuitBreakerFailThreshold must be positive when enabled").
+				WithCode(ErrCodeInvalidConfig)
 		}
 		if c.CircuitBreakerSuccessThreshold <= 0 {
-			return errors.New("CircuitBreakerSuccessThreshold must be positive when enabled")
+			return NewExchangeError("", ErrorTypeBadRequest, 400,
+				"CircuitBreakerSuccessThreshold must be positive when enabled").
+				WithCode(ErrCodeInvalidConfig)
 		}
 		if c.CircuitBreakerTimeout <= 0 {
-			return errors.New("CircuitBreakerTimeout must be positive when enabled")
+			return NewExchangeError("", ErrorTypeBadRequest, 400,
+				"CircuitBreakerTimeout must be positive when enabled").
+				WithCode(ErrCodeInvalidConfig)
 		}
 	}
 	return nil

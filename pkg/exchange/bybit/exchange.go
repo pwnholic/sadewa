@@ -71,7 +71,7 @@ func New(config *core.Config, opts ...Option) (*BybitExchange, error) {
 	}
 
 	httpClient, err := httpClient.NewClient(&httpClient.Config{
-		BaseURL:      baseURL(config),
+		BaseURL:      getBaseURL(config),
 		Timeout:      config.Timeout,
 		MaxRetries:   config.MaxRetries,
 		RetryWaitMin: config.RetryWaitMin,
@@ -108,7 +108,7 @@ func New(config *core.Config, opts ...Option) (*BybitExchange, error) {
 }
 
 // baseURL returns the API base URL based on market type and sandbox mode.
-func baseURL(config *core.Config) string {
+func getBaseURL(config *core.Config) string {
 	if config.Sandbox {
 		return "https://api-testnet.bybit.com"
 	}
@@ -116,7 +116,7 @@ func baseURL(config *core.Config) string {
 }
 
 // wsURL returns the WebSocket URL based on market type and sandbox mode.
-func wsURL(config *core.Config) string {
+func getWebsocketURL(config *core.Config) string {
 	if config.Sandbox {
 		return "wss://stream-testnet.bybit.com/v5/public/spot"
 	}
@@ -538,11 +538,18 @@ func (e *BybitExchange) SubscribeTicker(ctx context.Context, symbol string, opts
 		if err := ws.SubscribeTicker(symbol, func(t *core.Ticker) {
 			select {
 			case tickerCh <- t:
+			case <-ctx.Done():
 			default:
+				e.logger.Warn().Str("symbol", symbol).Msg("ticker channel full, message dropped")
 			}
 		}); err != nil {
 			errCh <- fmt.Errorf("subscribe ticker: %w", err)
+			return
 		}
+
+		// Wait for context cancellation
+		<-ctx.Done()
+		ws.UnsubscribeTicker(symbol)
 	}()
 
 	return tickerCh, errCh
@@ -572,11 +579,18 @@ func (e *BybitExchange) SubscribeTrades(ctx context.Context, symbol string, opts
 		if err := ws.SubscribeTrades(symbol, func(t *core.Trade) {
 			select {
 			case tradeCh <- t:
+			case <-ctx.Done():
 			default:
+				e.logger.Warn().Str("symbol", symbol).Msg("trade channel full, message dropped")
 			}
 		}); err != nil {
 			errCh <- fmt.Errorf("subscribe trades: %w", err)
+			return
 		}
+
+		// Wait for context cancellation
+		<-ctx.Done()
+		ws.UnsubscribeTrades(symbol)
 	}()
 
 	return tradeCh, errCh
@@ -607,14 +621,62 @@ func (e *BybitExchange) SubscribeOrderBook(ctx context.Context, symbol string, o
 			ob.Symbol = symbol
 			select {
 			case bookCh <- ob:
+			case <-ctx.Done():
 			default:
+				e.logger.Warn().Str("symbol", symbol).Msg("orderbook channel full, message dropped")
 			}
 		}); err != nil {
 			errCh <- fmt.Errorf("subscribe orderbook: %w", err)
+			return
 		}
+
+		// Wait for context cancellation
+		<-ctx.Done()
+		ws.UnsubscribeOrderBook(symbol)
 	}()
 
 	return bookCh, errCh
+}
+
+// SubscribeKlines subscribes to real-time kline updates for the specified symbol.
+// Returns channels for kline updates and errors respectively.
+func (e *BybitExchange) SubscribeKlines(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Kline, <-chan error) {
+	klineCh := make(chan *core.Kline, 100)
+	errCh := make(chan error, 100)
+
+	go func() {
+		defer close(klineCh)
+		defer close(errCh)
+
+		ws, err := e.getWSClient()
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		if err := ws.Connect(ctx); err != nil {
+			errCh <- fmt.Errorf("connect websocket: %w", err)
+			return
+		}
+
+		if err := ws.SubscribeKlines(symbol, "1", func(k *core.Kline) {
+			select {
+			case klineCh <- k:
+			case <-ctx.Done():
+			default:
+				e.logger.Warn().Str("symbol", symbol).Msg("kline channel full, message dropped")
+			}
+		}); err != nil {
+			errCh <- fmt.Errorf("subscribe klines: %w", err)
+			return
+		}
+
+		// Wait for context cancellation
+		<-ctx.Done()
+		ws.UnsubscribeKlines(symbol, "1")
+	}()
+
+	return klineCh, errCh
 }
 
 func (e *BybitExchange) getWSClient() (*BybitWSClient, error) {
@@ -675,14 +737,16 @@ func (e *BybitExchange) doRequest(ctx context.Context, req *core.Request) (*rest
 
 func (e *BybitExchange) doSignedRequest(ctx context.Context, req *core.Request) (*resty.Response, error) {
 	if e.keyRing == nil && e.config.Credentials == nil {
-		return nil, fmt.Errorf("no credentials configured")
+		return nil, core.NewExchangeError(e.Name(), core.ErrorTypeAuthentication, 401,
+			"no credentials configured").WithCode(core.ErrCodeNoCredentials)
 	}
 
 	var creds core.Credentials
 	if e.keyRing != nil {
 		key := e.keyRing.Current()
 		if key == nil {
-			return nil, fmt.Errorf("no available API key")
+			return nil, core.NewExchangeError(e.Name(), core.ErrorTypeAuthentication, 401,
+				"no available API key").WithCode(core.ErrCodeNoAPIKey)
 		}
 		creds = core.Credentials{
 			APIKey:     key.Key,

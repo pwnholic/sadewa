@@ -97,42 +97,42 @@ func TestWithLogger(t *testing.T) {
 
 func TestBaseURL_SpotProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: false}
-	assert.Equal(t, "https://api.bybit.com", baseURL(config))
+	assert.Equal(t, "https://api.bybit.com", getBaseURL(config))
 }
 
 func TestBaseURL_SpotSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: true}
-	assert.Equal(t, "https://api-testnet.bybit.com", baseURL(config))
+	assert.Equal(t, "https://api-testnet.bybit.com", getBaseURL(config))
 }
 
 func TestBaseURL_FuturesProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: false}
-	assert.Equal(t, "https://api.bybit.com", baseURL(config))
+	assert.Equal(t, "https://api.bybit.com", getBaseURL(config))
 }
 
 func TestBaseURL_FuturesSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: true}
-	assert.Equal(t, "https://api-testnet.bybit.com", baseURL(config))
+	assert.Equal(t, "https://api-testnet.bybit.com", getBaseURL(config))
 }
 
 func TestWSURL_SpotProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: false}
-	assert.Equal(t, "wss://stream.bybit.com/v5/public/spot", wsURL(config))
+	assert.Equal(t, "wss://stream.bybit.com/v5/public/spot", getWebsocketURL(config))
 }
 
 func TestWSURL_SpotSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: true}
-	assert.Equal(t, "wss://stream-testnet.bybit.com/v5/public/spot", wsURL(config))
+	assert.Equal(t, "wss://stream-testnet.bybit.com/v5/public/spot", getWebsocketURL(config))
 }
 
 func TestWSURL_FuturesProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: false}
-	assert.Equal(t, "wss://stream.bybit.com/v5/public/spot", wsURL(config))
+	assert.Equal(t, "wss://stream.bybit.com/v5/public/spot", getWebsocketURL(config))
 }
 
 func TestWSURL_FuturesSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: true}
-	assert.Equal(t, "wss://stream-testnet.bybit.com/v5/public/spot", wsURL(config))
+	assert.Equal(t, "wss://stream-testnet.bybit.com/v5/public/spot", getWebsocketURL(config))
 }
 
 func TestBybitExchange_Close(t *testing.T) {

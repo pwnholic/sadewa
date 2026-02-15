@@ -89,42 +89,42 @@ func TestWithLogger(t *testing.T) {
 
 func TestBaseURL_SpotProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: false}
-	assert.Equal(t, "https://api.binance.com", baseURL(config))
+	assert.Equal(t, "https://api.binance.com", getBaseURL(config))
 }
 
 func TestBaseURL_SpotSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: true}
-	assert.Equal(t, "https://testnet.binance.vision", baseURL(config))
+	assert.Equal(t, "https://testnet.binance.vision", getBaseURL(config))
 }
 
 func TestBaseURL_FuturesProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: false}
-	assert.Equal(t, "https://fapi.binance.com", baseURL(config))
+	assert.Equal(t, "https://fapi.binance.com", getBaseURL(config))
 }
 
 func TestBaseURL_FuturesSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: true}
-	assert.Equal(t, "https://testnet.binancefuture.com", baseURL(config))
+	assert.Equal(t, "https://testnet.binancefuture.com", getBaseURL(config))
 }
 
 func TestWSURL_SpotProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: false}
-	assert.Equal(t, "wss://stream.binance.com:9443/ws", wsURL(config))
+	assert.Equal(t, "wss://stream.binance.com:9443/ws", getWebsocketURL(config))
 }
 
 func TestWSURL_SpotSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeSpot, Sandbox: true}
-	assert.Equal(t, "wss://testnet.binance.vision/ws", wsURL(config))
+	assert.Equal(t, "wss://testnet.binance.vision/ws", getWebsocketURL(config))
 }
 
 func TestWSURL_FuturesProduction(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: false}
-	assert.Equal(t, "wss://fstream.binance.com/ws", wsURL(config))
+	assert.Equal(t, "wss://fstream.binance.com/ws", getWebsocketURL(config))
 }
 
 func TestWSURL_FuturesSandbox(t *testing.T) {
 	config := &core.Config{MarketType: core.MarketTypeFutures, Sandbox: true}
-	assert.Equal(t, "wss://stream.binancefuture.com/ws", wsURL(config))
+	assert.Equal(t, "wss://stream.binancefuture.com/ws", getWebsocketURL(config))
 }
 
 func TestBinanceExchange_Close(t *testing.T) {

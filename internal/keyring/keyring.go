@@ -20,19 +20,19 @@ type KeyRing struct {
 // APIKey represents credentials for authenticating with an exchange API.
 type APIKey struct {
 	// ID is a unique identifier for this key.
-	ID string
+	ID string `json:"id"`
 	// Key is the public API key identifier.
-	Key string
+	Key string `json:"key"`
 	// Secret is the private API key secret.
-	Secret string
+	Secret string `json:"secret,omitempty"`
 	// Passphrase is an optional passphrase required by some exchanges.
-	Passphrase string
+	Passphrase string `json:"passphrase,omitempty"`
 	// Disabled indicates whether this key is currently disabled.
-	Disabled bool
+	Disabled bool `json:"disabled"`
 	// LastUsed records when this key was most recently used.
-	LastUsed time.Time
+	LastUsed time.Time `json:"last_used"`
 	// ErrorCount tracks the number of consecutive errors with this key.
-	ErrorCount int
+	ErrorCount int `json:"error_count"`
 }
 
 // RotationStrategy defines when API key rotation should occur.

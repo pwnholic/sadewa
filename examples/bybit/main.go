@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"sadewa/pkg/core"
 	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/bybit"
@@ -13,6 +15,8 @@ import (
 )
 
 func main() {
+	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -22,21 +26,21 @@ func main() {
 	// Create container and register Bybit exchange
 	container := exchange.NewContainer()
 	if err := bybit.Register(container, config); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to register bybit: %v\n", err)
+		log.Error().Err(err).Msg("Failed to register bybit")
 		os.Exit(1)
 	}
 
 	// Create session
 	sess, err := session.NewSession(container, config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
+		log.Error().Err(err).Msg("Failed to create session")
 		os.Exit(1)
 	}
 	defer sess.Close()
 
 	// Set the exchange for this session
 	if err := sess.SetExchange("bybit"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to set exchange: %v\n", err)
+		log.Error().Err(err).Msg("Failed to set exchange")
 		os.Exit(1)
 	}
 
@@ -44,7 +48,7 @@ func main() {
 	fmt.Println("=== Bybit BTC/USDT Ticker ===")
 	ticker, err := sess.GetTicker(ctx, "BTC/USDT")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting ticker: %v\n", err)
+		log.Error().Err(err).Msg("Error getting ticker")
 		os.Exit(1)
 	}
 

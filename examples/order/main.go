@@ -7,15 +7,18 @@ import (
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
+	"github.com/rs/zerolog"
 
 	"sadewa/pkg/core"
 	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"
-	"sadewa/pkg/order"
+	ordermanager "sadewa/pkg/order"
 	"sadewa/pkg/session"
 )
 
 func main() {
+	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
+
 	apiKey := os.Getenv("BINANCE_API_KEY")
 	secretKey := os.Getenv("BINANCE_SECRET_KEY")
 
@@ -38,19 +41,19 @@ func main() {
 
 	container := exchange.NewContainer()
 	if err := binance.Register(container, config); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to register binance: %v\n", err)
+		log.Error().Err(err).Msg("Failed to register binance")
 		os.Exit(1)
 	}
 
 	sess, err := session.NewSession(container, config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
+		log.Error().Err(err).Msg("Failed to create session")
 		os.Exit(1)
 	}
 	defer sess.Close()
 
 	if err := sess.SetExchange("binance"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to set exchange: %v\n", err)
+		log.Error().Err(err).Msg("Failed to set exchange")
 		os.Exit(1)
 	}
 
@@ -65,7 +68,7 @@ func main() {
 	fmt.Println("=== Get Account Balance ===")
 	balances, err := sess.GetBalance(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting balance: %v\n", err)
+		log.Error().Err(err).Msg("Error getting balance")
 	} else {
 		printBalances(balances)
 	}
@@ -73,7 +76,7 @@ func main() {
 	fmt.Println("\n=== Place Limit Order ===")
 	order, err := placeLimitOrder(ctx, manager, "BTC/USDT", core.SideBuy, "40000", "0.001")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error placing order: %v\n", err)
+		log.Error().Err(err).Msg("Error placing order")
 	} else {
 		printOrder(order)
 	}
@@ -85,7 +88,7 @@ func main() {
 			OrderID: order.ID,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error querying order: %v\n", err)
+			log.Error().Err(err).Msg("Error querying order")
 		} else {
 			printOrder(queriedOrder)
 		}
@@ -93,7 +96,7 @@ func main() {
 		fmt.Println("\n=== Cancel Order ===")
 		canceledOrder, err := cancelOrder(ctx, manager, order.Symbol, order.ID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error canceling order: %v\n", err)
+			log.Error().Err(err).Msg("Error canceling order")
 		} else {
 			printOrder(canceledOrder)
 		}
@@ -102,7 +105,7 @@ func main() {
 	fmt.Println("\n=== Get Open Orders ===")
 	openOrders, err := sess.GetOpenOrders(ctx, "BTC/USDT")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting open orders: %v\n", err)
+		log.Error().Err(err).Msg("Error getting open orders")
 	} else {
 		fmt.Printf("Found %d open orders\n", len(openOrders))
 		for i, o := range openOrders {

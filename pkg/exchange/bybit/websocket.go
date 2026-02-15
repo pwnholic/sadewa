@@ -50,12 +50,12 @@ func NewBybitWSClient(sandbox bool) *BybitWSClient {
 			ReconnectBaseWait: 1 * time.Second,
 			PingInterval:      20 * time.Second,
 		}),
-		logger:            zerolog.Nop(),
-		sandbox:           sandbox,
-		tickerCallbacks:   make(map[string]func(*core.Ticker)),
+		logger:             zerolog.Nop(),
+		sandbox:            sandbox,
+		tickerCallbacks:    make(map[string]func(*core.Ticker)),
 		orderBookCallbacks: make(map[string]func(*core.OrderBook)),
-		tradeCallbacks:    make(map[string]func(*core.Trade)),
-		klineCallbacks:    make(map[string]func(*core.Kline)),
+		tradeCallbacks:     make(map[string]func(*core.Trade)),
+		klineCallbacks:     make(map[string]func(*core.Kline)),
 	}
 }
 
@@ -126,13 +126,13 @@ func (c *BybitWSClient) handleTickerMessage(data []byte) error {
 		Topic string `json:"topic"`
 		Type  string `json:"type"`
 		Data  struct {
-			Symbol          string `json:"symbol"`
-			LastPrice       string `json:"lastPrice"`
-			HighPrice24h    string `json:"highPrice24h"`
-			LowPrice24h     string `json:"lowPrice24h"`
-			Volume24h       string `json:"volume24h"`
-			Bid1Price       string `json:"bid1Price"`
-			Ask1Price       string `json:"ask1Price"`
+			Symbol       string `json:"symbol"`
+			LastPrice    string `json:"lastPrice"`
+			HighPrice24h string `json:"highPrice24h"`
+			LowPrice24h  string `json:"lowPrice24h"`
+			Volume24h    string `json:"volume24h"`
+			Bid1Price    string `json:"bid1Price"`
+			Ask1Price    string `json:"ask1Price"`
 		} `json:"data"`
 		Ts int64 `json:"ts"`
 	}
@@ -320,10 +320,10 @@ func (c *BybitWSClient) handleKlineMessage(data []byte) error {
 	if ok && callback != nil {
 		for _, k := range msg.Data {
 			kline := &core.Kline{
-				Symbol:      symbol,
-				OpenTime:    time.UnixMilli(k.Start),
-				CloseTime:   time.UnixMilli(k.End),
-				NumTrades:   0,
+				Symbol:    symbol,
+				OpenTime:  time.UnixMilli(k.Start),
+				CloseTime: time.UnixMilli(k.End),
+				NumTrades: 0,
 			}
 			parseDecimal(&kline.Open, k.Open)
 			parseDecimal(&kline.High, k.High)
@@ -358,8 +358,8 @@ func (c *BybitWSClient) sendSubscribe(topic string) {
 	}
 
 	req := wsRequest{
-		Op:   "subscribe",
-		Args: []string{topic},
+		Op:    "subscribe",
+		Args:  []string{topic},
 		ReqID: c.requestID.Add(1),
 	}
 
@@ -375,8 +375,8 @@ func (c *BybitWSClient) sendUnsubscribe(topic string) {
 	}
 
 	req := wsRequest{
-		Op:   "unsubscribe",
-		Args: []string{topic},
+		Op:    "unsubscribe",
+		Args:  []string{topic},
 		ReqID: c.requestID.Add(1),
 	}
 

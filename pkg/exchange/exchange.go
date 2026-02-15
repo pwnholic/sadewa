@@ -31,6 +31,10 @@ type Exchange interface {
 	SubscribeTicker(ctx context.Context, symbol string, opts ...Option) (<-chan *core.Ticker, <-chan error)
 	SubscribeTrades(ctx context.Context, symbol string, opts ...Option) (<-chan *core.Trade, <-chan error)
 	SubscribeOrderBook(ctx context.Context, symbol string, opts ...Option) (<-chan *core.OrderBook, <-chan error)
+	SubscribeKlines(ctx context.Context, symbol string, opts ...Option) (<-chan *core.Kline, <-chan error)
+
+	// Close releases resources associated with the exchange connection.
+	Close() error
 }
 
 // OrderRequest contains the parameters required to place a new order on an exchange.
