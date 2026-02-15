@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
+	"github.com/rs/zerolog"
 
-	"sadewa/pkg/aggregate"
+	aggregator "sadewa/pkg/aggregate"
 	"sadewa/pkg/core"
 	"sadewa/pkg/exchange"
 	"sadewa/pkg/exchange/binance"
@@ -16,6 +17,8 @@ import (
 )
 
 func main() {
+	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -28,19 +31,19 @@ func main() {
 
 	container := exchange.NewContainer()
 	if err := binance.Register(container, binanceConfig); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to register binance: %v\n", err)
+		log.Error().Err(err).Msg("Failed to register binance")
 		os.Exit(1)
 	}
 
 	binanceSession, err := session.NewSession(container, binanceConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create Binance session: %v\n", err)
+		log.Error().Err(err).Msg("Failed to create Binance session")
 		os.Exit(1)
 	}
 	defer binanceSession.Close()
 
 	if err := binanceSession.SetExchange("binance"); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to set exchange: %v\n", err)
+		log.Error().Err(err).Msg("Failed to set exchange")
 		os.Exit(1)
 	}
 
@@ -67,7 +70,7 @@ func main() {
 	fmt.Println("=== Get Best Price Across Exchanges ===")
 	bestPrice, err := agg.GetBestPrice(ctx, "BTC/USDT")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.Error().Err(err).Msg("Error getting best price")
 	} else {
 		fmt.Printf("Best Bid: %s @ %s\n", bestPrice.Bid.String(), bestPrice.BidExchange)
 		fmt.Printf("Best Ask: %s @ %s\n", bestPrice.Ask.String(), bestPrice.AskExchange)
@@ -79,7 +82,7 @@ func main() {
 	fmt.Println("=== Calculate VWAP ===")
 	vwap, err := agg.GetVWAP(ctx, "BTC/USDT", 20)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.Error().Err(err).Msg("Error calculating VWAP")
 	} else {
 		fmt.Printf("VWAP: %s\n", vwap.VWAP.String())
 		fmt.Printf("Total Volume: %s\n", vwap.Volume.String())
@@ -91,7 +94,7 @@ func main() {
 	fmt.Println("=== Get Merged Order Book ===")
 	mergedBook, err := agg.GetMergedOrderBook(ctx, "BTC/USDT", 5)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.Error().Err(err).Msg("Error getting merged order book")
 	} else {
 		fmt.Printf("Symbol: %s\n", mergedBook.Symbol)
 		fmt.Printf("Exchanges: %v\n", mergedBook.Exchanges)
@@ -117,7 +120,7 @@ func main() {
 	fmt.Println("=== Compare Prices Across Exchanges ===")
 	comparison, err := agg.ComparePrices(ctx, "BTC/USDT")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.Error().Err(err).Msg("Error comparing prices")
 	} else {
 		fmt.Printf("Symbol: %s\n", comparison.Symbol)
 		for _, ep := range comparison.Exchanges {
@@ -133,7 +136,7 @@ func main() {
 
 	opportunities, err := agg.FindArbitrage(ctx, "BTC/USDT", minSpread)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.Error().Err(err).Msg("Error finding arbitrage")
 	} else if len(opportunities) == 0 {
 		fmt.Println("No arbitrage opportunities found (need multiple exchanges)")
 	} else {

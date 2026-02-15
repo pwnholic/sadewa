@@ -122,6 +122,16 @@ func (m *mockExchange) SubscribeOrderBook(ctx context.Context, symbol string, op
 	return obCh, errCh
 }
 
+func (m *mockExchange) SubscribeKlines(ctx context.Context, symbol string, opts ...exchange.Option) (<-chan *core.Kline, <-chan error) {
+	klineCh := make(chan *core.Kline)
+	errCh := make(chan error)
+	close(klineCh)
+	close(errCh)
+	return klineCh, errCh
+}
+
+func (m *mockExchange) Close() error { return nil }
+
 func createTestTicker(bid, ask, volume string, timestamp time.Time) *core.Ticker {
 	t := &core.Ticker{
 		Symbol:    "BTC/USDT",

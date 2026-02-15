@@ -11,41 +11,41 @@ import (
 
 // bybitTicker represents the raw ticker response from Bybit API (v5).
 type bybitTicker struct {
-	Symbol     string `json:"symbol"`
-	LastPrice  string `json:"lastPrice"`
-	HighPrice  string `json:"highPrice24h"`
-	LowPrice   string `json:"lowPrice24h"`
-	Volume     string `json:"volume24h"`
-	Bid1Price  string `json:"bid1Price"`
-	Bid1Size   string `json:"bid1Size"`
-	Ask1Price  string `json:"ask1Price"`
-	Ask1Size   string `json:"ask1Size"`
+	Symbol      string `json:"symbol"`
+	LastPrice   string `json:"lastPrice"`
+	HighPrice   string `json:"highPrice24h"`
+	LowPrice    string `json:"lowPrice24h"`
+	Volume      string `json:"volume24h"`
+	Bid1Price   string `json:"bid1Price"`
+	Bid1Size    string `json:"bid1Size"`
+	Ask1Price   string `json:"ask1Price"`
+	Ask1Size    string `json:"ask1Size"`
 	PriceChange string `json:"price24hPcnt"`
 }
 
 // bybitOrder represents the raw order response from Bybit API.
 type bybitOrder struct {
-	OrderID       string `json:"orderId"`
-	OrderLinkId   string `json:"orderLinkId"`
-	Symbol        string `json:"symbol"`
-	Side          string `json:"side"`
-	OrderType     string `json:"orderType"`
-	Price         string `json:"price"`
-	Qty           string `json:"qty"`
-	CumExecQty    string `json:"cumExecQty"`
-	OrderStatus   string `json:"orderStatus"`
-	TimeInForce   string `json:"timeInForce"`
-	CreatedTime   string `json:"createdTime"`
-	UpdatedTime   string `json:"updatedTime"`
-	AvgPrice      string `json:"avgPrice"`
+	OrderID     string `json:"orderId"`
+	OrderLinkID string `json:"orderLinkId"`
+	Symbol      string `json:"symbol"`
+	Side        string `json:"side"`
+	OrderType   string `json:"orderType"`
+	Price       string `json:"price"`
+	Qty         string `json:"qty"`
+	CumExecQty  string `json:"cumExecQty"`
+	OrderStatus string `json:"orderStatus"`
+	TimeInForce string `json:"timeInForce"`
+	CreatedTime string `json:"createdTime"`
+	UpdatedTime string `json:"updatedTime"`
+	AvgPrice    string `json:"avgPrice"`
 }
 
 // bybitBalance represents a single asset balance from Bybit API.
 type bybitBalance struct {
-	Coin        string `json:"coin"`
+	Coin          string `json:"coin"`
 	WalletBalance string `json:"walletBalance"`
-	Free        string `json:"availableToWithdraw"`
-	Locked      string `json:"cumRealisedPnl"`
+	Free          string `json:"availableToWithdraw"`
+	Locked        string `json:"cumRealisedPnl"`
 }
 
 // bybitCoin represents coin info in wallet.
@@ -62,20 +62,20 @@ type bybitAccount struct {
 
 // bybitTrade represents a public trade from Bybit API.
 type bybitTrade struct {
-	ExecID     string `json:"execId"`
-	Symbol     string `json:"symbol"`
-	Side       string `json:"side"`
-	Price      string `json:"price"`
-	Qty        string `json:"qty"`
-	Time       string `json:"time"`
-	IsMaker    bool   `json:"isMaker"`
+	ExecID  string `json:"execId"`
+	Symbol  string `json:"symbol"`
+	Side    string `json:"side"`
+	Price   string `json:"price"`
+	Qty     string `json:"qty"`
+	Time    string `json:"time"`
+	IsMaker bool   `json:"isMaker"`
 }
 
 // bybitMyTrade represents a user's trade from Bybit API.
 type bybitMyTrade struct {
 	ExecID        string `json:"execId"`
 	OrderID       string `json:"orderId"`
-	OrderLinkId   string `json:"orderLinkId"`
+	OrderLinkID   string `json:"orderLinkId"`
 	Symbol        string `json:"symbol"`
 	Side          string `json:"side"`
 	Price         string `json:"execPrice"`
@@ -95,15 +95,15 @@ type bybitOrderBook struct {
 
 // bybitKline represents a kline/candlestick from Bybit API.
 type bybitKline struct {
-	Start     int64  `json:"start"`
-	End       int64  `json:"end"`
-	Interval  string `json:"interval"`
-	Open      string `json:"open"`
-	High      string `json:"high"`
-	Low       string `json:"low"`
-	Close     string `json:"close"`
-	Volume    string `json:"volume"`
-	Turnover  string `json:"turnover"`
+	Start    int64  `json:"start"`
+	End      int64  `json:"end"`
+	Interval string `json:"interval"`
+	Open     string `json:"open"`
+	High     string `json:"high"`
+	Low      string `json:"low"`
+	Close    string `json:"close"`
+	Volume   string `json:"volume"`
+	Turnover string `json:"turnover"`
 }
 
 // Normalizer converts Bybit-specific data structures to canonical core types.
@@ -136,7 +136,7 @@ func (n *Normalizer) NormalizeTicker(data *bybitTicker) *core.Ticker {
 func (n *Normalizer) NormalizeOrder(data *bybitOrder) (*core.Order, error) {
 	order := &core.Order{
 		ID:            data.OrderID,
-		ClientOrderID: data.OrderLinkId,
+		ClientOrderID: data.OrderLinkID,
 		Symbol:        parseSymbol(data.Symbol),
 		Side:          parseBybitOrderSide(data.Side),
 		Type:          parseBybitOrderType(data.OrderType),
@@ -198,9 +198,9 @@ func (n *Normalizer) NormalizeBalances(account *bybitAccount) []core.Balance {
 // NormalizeTrade converts a Bybit public trade to a canonical Trade.
 func (n *Normalizer) NormalizeTrade(data *bybitTrade) *core.Trade {
 	trade := &core.Trade{
-		ID:      data.ExecID,
-		Symbol:  parseSymbol(data.Symbol),
-		Side:    parseBybitSide(data.Side),
+		ID:     data.ExecID,
+		Symbol: parseSymbol(data.Symbol),
+		Side:   parseBybitSide(data.Side),
 	}
 
 	parseDecimal(&trade.Price, data.Price)
@@ -218,11 +218,11 @@ func (n *Normalizer) NormalizeTrade(data *bybitTrade) *core.Trade {
 // NormalizeMyTrade converts a Bybit user trade to a canonical Trade.
 func (n *Normalizer) NormalizeMyTrade(data *bybitMyTrade) *core.Trade {
 	trade := &core.Trade{
-		ID:        data.ExecID,
-		OrderID:   data.OrderID,
-		Symbol:    parseSymbol(data.Symbol),
-		Side:      parseBybitSide(data.Side),
-		FeeAsset:  data.FeeCurrencyID,
+		ID:       data.ExecID,
+		OrderID:  data.OrderID,
+		Symbol:   parseSymbol(data.Symbol),
+		Side:     parseBybitSide(data.Side),
+		FeeAsset: data.FeeCurrencyID,
 	}
 
 	parseDecimal(&trade.Price, data.Price)

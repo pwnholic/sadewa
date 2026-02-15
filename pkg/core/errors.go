@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -48,6 +49,22 @@ func (t ErrorType) String() string {
 	}[t]
 }
 
+// Sentinel errors for common error conditions.
+var (
+	// ErrClientClosed is returned when attempting to use a closed client.
+	ErrClientClosed = errors.New("client is closed")
+	// ErrStreamClosed is returned when attempting to use a closed stream.
+	ErrStreamClosed = errors.New("stream is closed")
+	// ErrNotConnected is returned when WebSocket is not connected.
+	ErrNotConnected = errors.New("websocket not connected")
+	// ErrCircuitBreakerOpen is returned when circuit breaker is open.
+	ErrCircuitBreakerOpen = errors.New("circuit breaker is open")
+	// ErrNoCredentials is returned when no API credentials are configured.
+	ErrNoCredentials = errors.New("no credentials configured")
+	// ErrNoAPIKey is returned when no API key is available.
+	ErrNoAPIKey = errors.New("no available API key")
+)
+
 // ExchangeError represents a structured error returned from an exchange.
 // It provides detailed context for debugging and error handling.
 type ExchangeError struct {
@@ -76,6 +93,12 @@ func (e *ExchangeError) Error() string {
 	}
 	return fmt.Sprintf("[%s] %s (%d): %s",
 		e.Exchange, e.Type, e.StatusCode, e.Message)
+}
+
+// WithCode returns a new ExchangeError with the specified error code.
+func (e *ExchangeError) WithCode(code ErrorCode) *ExchangeError {
+	e.Code = string(code)
+	return e
 }
 
 // NewExchangeError creates a new ExchangeError with the specified details.

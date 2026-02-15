@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	productionURL = "https://api.bybit.com"
-	sandboxURL    = "https://api-testnet.bybit.com"
+	ProductionURL = "https://api.bybit.com"
+	SandboxURL    = "https://api-testnet.bybit.com"
 )
 
 // Protocol implements the core.Protocol interface for Bybit exchange.
@@ -45,9 +45,9 @@ func (p *Protocol) Version() string {
 // If sandbox is true, returns the testnet URL; otherwise returns the production URL.
 func (p *Protocol) BaseURL(sandbox bool) string {
 	if sandbox {
-		return sandboxURL
+		return SandboxURL
 	}
-	return productionURL
+	return ProductionURL
 }
 
 // SupportedOperations returns the list of operations supported by this protocol.

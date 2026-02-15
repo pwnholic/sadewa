@@ -11,11 +11,11 @@ type Option func(*Options)
 
 // Options holds configurable parameters for exchange API requests.
 type Options struct {
-	Limit      int
-	Interval   string
-	StartTime  time.Time
-	EndTime    time.Time
-	MarketType core.MarketType
+	Limit      int            `json:"limit,omitempty"`
+	Interval   string         `json:"interval,omitempty"`
+	StartTime  time.Time      `json:"start_time,omitempty"`
+	EndTime    time.Time      `json:"end_time,omitempty"`
+	MarketType core.MarketType `json:"market_type,omitempty"`
 }
 
 // WithLimit returns an option that sets the maximum number of results to return.

@@ -28,6 +28,27 @@ const (
 	ErrCodeInvalidOrder ErrorCode = "INVALID_ORDER"
 	// ErrCodeInvalidSymbol indicates the trading pair is not recognized.
 	ErrCodeInvalidSymbol ErrorCode = "INVALID_SYMBOL"
+
+	// Configuration errors
+	ErrCodeInvalidConfig ErrorCode = "INVALID_CONFIG"
+
+	// Client state errors
+	ErrCodeClientClosed ErrorCode = "CLIENT_CLOSED"
+	ErrCodeInvalidState ErrorCode = "INVALID_STATE"
+
+	// Stream/WebSocket errors
+	ErrCodeStreamClosed ErrorCode = "STREAM_CLOSED"
+	ErrCodeNotConnected ErrorCode = "NOT_CONNECTED"
+
+	// Circuit breaker errors
+	ErrCodeCircuitBreaker ErrorCode = "CIRCUIT_BREAKER_OPEN"
+
+	// Authentication errors
+	ErrCodeNoCredentials ErrorCode = "NO_CREDENTIALS"
+	ErrCodeNoAPIKey      ErrorCode = "NO_API_KEY"
+
+	// Unsupported operation
+	ErrCodeUnsupported ErrorCode = "UNSUPPORTED_METHOD"
 )
 
 // IsErrorCode checks if the error matches the specified error code.

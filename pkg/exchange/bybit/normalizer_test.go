@@ -46,18 +46,18 @@ func TestNormalizeOrder(t *testing.T) {
 	n := NewNormalizer()
 
 	data := &bybitOrder{
-		OrderID:       "123456789",
-		OrderLinkId:   "my-order-1",
-		Symbol:        "BTCUSDT",
-		Side:          "Buy",
-		OrderType:     "Limit",
-		Price:         "50000.00",
-		Qty:           "0.1",
-		CumExecQty:    "0.05",
-		OrderStatus:   "PartiallyFilled",
-		TimeInForce:   "GTC",
-		CreatedTime:   "1640000000000",
-		UpdatedTime:   "1640000100000",
+		OrderID:     "123456789",
+		OrderLinkID: "my-order-1",
+		Symbol:      "BTCUSDT",
+		Side:        "Buy",
+		OrderType:   "Limit",
+		Price:       "50000.00",
+		Qty:         "0.1",
+		CumExecQty:  "0.05",
+		OrderStatus: "PartiallyFilled",
+		TimeInForce: "GTC",
+		CreatedTime: "1640000000000",
+		UpdatedTime: "1640000100000",
 	}
 
 	order, err := n.NormalizeOrder(data)
@@ -82,14 +82,14 @@ func TestNormalizeOrder_Filled(t *testing.T) {
 	n := NewNormalizer()
 
 	data := &bybitOrder{
-		OrderID:       "123456789",
-		Symbol:        "BTCUSDT",
-		Side:          "Sell",
-		OrderType:     "Market",
-		Qty:           "0.1",
-		CumExecQty:    "0.1",
-		OrderStatus:   "Filled",
-		TimeInForce:   "IOC",
+		OrderID:     "123456789",
+		Symbol:      "BTCUSDT",
+		Side:        "Sell",
+		OrderType:   "Market",
+		Qty:         "0.1",
+		CumExecQty:  "0.1",
+		OrderStatus: "Filled",
+		TimeInForce: "IOC",
 	}
 
 	order, err := n.NormalizeOrder(data)
@@ -173,7 +173,7 @@ func TestNormalizeMyTrade(t *testing.T) {
 	data := &bybitMyTrade{
 		ExecID:        "exec-456",
 		OrderID:       "order-789",
-		OrderLinkId:   "my-order",
+		OrderLinkID:   "my-order",
 		Symbol:        "BTCUSDT",
 		Side:          "Sell",
 		Price:         "51000.00",
@@ -200,15 +200,15 @@ func TestNormalizeKline(t *testing.T) {
 	n := NewNormalizer()
 
 	data := &bybitKline{
-		Start:     1640000000000,
-		End:       1640003600000,
-		Interval:  "60",
-		Open:      "50000.00",
-		High:      "51000.00",
-		Low:       "49000.00",
-		Close:     "50500.00",
-		Volume:    "1000.5",
-		Turnover:  "50000000",
+		Start:    1640000000000,
+		End:      1640003600000,
+		Interval: "60",
+		Open:     "50000.00",
+		High:     "51000.00",
+		Low:      "49000.00",
+		Close:    "50500.00",
+		Volume:   "1000.5",
+		Turnover: "50000000",
 	}
 
 	kline, err := n.NormalizeKline(data, "BTC/USDT")
@@ -325,13 +325,13 @@ func TestDenormalizeOrder(t *testing.T) {
 	_, _, _ = apd.BaseContext.SetString(&qty, "0.1")
 
 	order := &core.Order{
-		Symbol:         "BTC/USDT",
-		Side:           core.SideBuy,
-		Type:           core.TypeLimit,
-		Price:          price,
-		Quantity:       qty,
-		TimeInForce:    core.GTC,
-		ClientOrderID:  "my-order-1",
+		Symbol:        "BTC/USDT",
+		Side:          core.SideBuy,
+		Type:          core.TypeLimit,
+		Price:         price,
+		Quantity:      qty,
+		TimeInForce:   core.GTC,
+		ClientOrderID: "my-order-1",
 	}
 
 	params := n.DenormalizeOrder(order)

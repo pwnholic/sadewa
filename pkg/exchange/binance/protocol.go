@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	productionURL = "https://api.binance.com"
-	sandboxURL    = "https://testnet.binance.vision"
+	ProductionURL = "https://api.binance.com"
+	SandboxURL    = "https://testnet.binance.vision"
 )
 
 // Protocol implements the core.Protocol interface for Binance exchange.
@@ -46,9 +46,9 @@ func (p *Protocol) Version() string {
 // If sandbox is true, returns the testnet URL; otherwise returns the production URL.
 func (p *Protocol) BaseURL(sandbox bool) string {
 	if sandbox {
-		return sandboxURL
+		return SandboxURL
 	}
-	return productionURL
+	return ProductionURL
 }
 
 // SupportedOperations returns the list of operations supported by this protocol.

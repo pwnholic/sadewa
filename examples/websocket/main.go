@@ -27,7 +27,7 @@ func main() {
 	wsClient.SetLogger(logger)
 
 	if err := wsClient.Connect(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to connect: %v\n", err)
+		logger.Error().Err(err).Msg("Failed to connect")
 		os.Exit(1)
 	}
 	defer wsClient.Close()
